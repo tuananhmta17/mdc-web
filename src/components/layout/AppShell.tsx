@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { useAppState } from "@/lib/state-context";
 import {
@@ -23,14 +23,21 @@ import {
   Sparkles,
   CheckCircle2,
   AlertTriangle,
+  LogIn,
 } from "lucide-react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { data, loading, switchUser, markNotificationRead, runEmailWorker } = useAppState();
+  const router = useRouter();
+  const { data, loading, switchUser, logout, markNotificationRead, runEmailWorker } = useAppState();
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // If on login page, render children without app shell layout
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
 
   const session = data.session;
   const isPending = data.isPendingApproval;
@@ -244,6 +251,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Footer Controls: Login page link & Logout button */}
+                <div className="p-2.5 bg-mdc-card/90 border-t border-mdc-border flex items-center justify-between">
+                  <Link
+                    href="/login"
+                    onClick={() => setShowRoleMenu(false)}
+                    className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors"
+                  >
+                    <LogIn className="w-3.5 h-3.5 text-mdc-red" />
+                    <span>Trang đăng nhập</span>
+                  </Link>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setShowRoleMenu(false);
+                      await logout();
+                      router.push("/login");
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 text-[11px] font-semibold flex items-center gap-1.5 transition-all"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Đăng xuất</span>
+                  </button>
                 </div>
               </div>
             )}

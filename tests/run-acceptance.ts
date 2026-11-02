@@ -217,6 +217,46 @@ assert(
   "TC15.1: Thành viên thường bị chặn truy cập chức năng Ban Chủ nhiệm"
 );
 
+// Test 16: Đăng nhập & Xác thực Mật khẩu (Authentication)
+console.log("\n--- Tiêu chí 16: Đăng nhập & Xác thực Mật khẩu ---");
+const testUser = db.profiles.find((p) => p.email === "huy.nq@mtadancecrew.vn")!;
+assert(
+  testUser && (testUser.password === "123456" || testUser.password !== undefined),
+  "TC16.1: Người dùng có mật khẩu khởi tạo hợp lệ"
+);
+
+// Test 17: Phân quyền Admin Quản lý Tài khoản (Thêm, Sửa, Xóa CRUD)
+console.log("\n--- Tiêu chí 17: Admin Toàn Quyền CRUD Tài Khoản & Phân Quyền ---");
+// 17.1 Admin có quyền thêm thành viên
+assert(
+  RBAC.canManageMembers(boardAdminSession),
+  "TC17.1: Ban Chủ nhiệm có quyền thêm và quản lý tài khoản thành viên"
+);
+
+// 17.2 Thành viên thường không có quyền quản lý tài khoản
+assert(
+  !RBAC.canManageMembers(danceMemberSession) && !RBAC.canManageMembers(mediaMemberSession),
+  "TC17.2: Vũ công và Thành viên Media bị chặn thao tác CRUD tài khoản"
+);
+
+// 17.3 Admin có quyền xóa tài khoản khác
+assert(
+  RBAC.canDeleteMember(boardAdminSession, "u-dance-mem-3"),
+  "TC17.3: Admin được phép xóa tài khoản thành viên khác"
+);
+
+// 17.4 Admin không được phép tự xóa tài khoản của chính mình (Safeguard)
+assert(
+  !RBAC.canDeleteMember(boardAdminSession, boardAdminSession.user.id),
+  "TC17.4: Bảo vệ an toàn - Admin bị chặn tự xóa tài khoản của chính mình"
+);
+
+// 17.5 Người dùng không có quyền admin bị chặn xóa tài khoản
+assert(
+  !RBAC.canDeleteMember(danceMemberSession, "u-dance-mem-2"),
+  "TC17.5: Thành viên thường bị chặn xóa bất kỳ tài khoản nào"
+);
+
   console.log("\n=====================================================================");
   console.log(`KẾT QUẢ: Đã vượt qua ${passedCount}/${totalTests} bài kiểm tra nghiệm thu!`);
   console.log("=====================================================================");

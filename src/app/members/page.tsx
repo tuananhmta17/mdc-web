@@ -13,72 +13,178 @@ import {
   Shield,
   Search,
   AlertCircle,
+  Edit2,
+  Trash2,
+  Lock,
+  Unlock,
+  KeyRound,
+  ShieldAlert,
+  UserCheck,
+  Check,
+  X,
 } from "lucide-react";
+import { DepartmentCode, RoleCode, UserStatus } from "@/lib/types";
 
 export default function MembersPage() {
-  const { data, refresh } = useAppState();
+  const { data, refresh, createMember, updateMember, deleteMember } = useAppState();
   const session = data.session;
+  const isBoardAdmin = session?.isBoardAdmin;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterDept, setFilterDept] = useState<string>("ALL");
   const [filterStatus, setFilterStatus] = useState<string>("ALL");
-  const [showInviteModal, setShowInviteModal] = useState(false);
 
-  // Invite form state
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteName, setInviteName] = useState("");
-  const [invitePhone, setInvitePhone] = useState("");
-  const [inviteClass, setInviteClass] = useState("");
-  const [inviteDept, setInviteDept] = useState("DANCE");
-  const [inviteRole, setInviteRole] = useState("DANCE_MEMBER");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  // Create Member Modal State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createEmail, setCreateEmail] = useState("");
+  const [createName, setCreateName] = useState("");
+  const [createPassword, setCreatePassword] = useState("123456");
+  const [createPhone, setCreatePhone] = useState("");
+  const [createClass, setCreateClass] = useState("");
+  const [createDept, setCreateDept] = useState<DepartmentCode>("DANCE");
+  const [createRole, setCreateRole] = useState<RoleCode>("DANCE_MEMBER");
+  const [createStatus, setCreateStatus] = useState<UserStatus>("ACTIVE");
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
 
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setErrorMsg("");
+  // Edit Member Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editClass, setEditClass] = useState("");
+  const [editDept, setEditDept] = useState<DepartmentCode>("DANCE");
+  const [editRole, setEditRole] = useState<RoleCode>("DANCE_MEMBER");
+  const [editStatus, setEditStatus] = useState<UserStatus>("ACTIVE");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editError, setEditError] = useState("");
 
-    try {
-      const res = await fetch("/api/members", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: inviteEmail,
-          full_name: inviteName,
-          phone: invitePhone,
-          cohort_class: inviteClass,
-          department_code: inviteDept,
-          role: inviteRole,
-        }),
-      });
+  // Delete Confirmation Modal State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
-      if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.error || "Không thể thêm thành viên");
-      }
+  // Open Edit Modal
+  const openEditModal = (memberId: string) => {
+    const member = data.profiles.find((p) => p.id === memberId);
+    if (!member) return;
 
-      setShowInviteModal(false);
-      setInviteEmail("");
-      setInviteName("");
-      setInvitePhone("");
-      setInviteClass("");
-      await refresh();
-    } catch (err: any) {
-      setErrorMsg(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    const mem = data.departmentMemberships.find((m) => m.user_id === memberId && m.is_primary);
+    const dept = data.departments.find((d) => d.id === mem?.department_id);
+    const roleAssignment = data.roleAssignments.find((r) => r.user_id === memberId);
+
+    setEditingUserId(memberId);
+    setEditEmail(member.email);
+    setEditName(member.full_name);
+    setEditPassword(""); // Blank means do not change password
+    setEditPhone(member.phone || "");
+    setEditClass(member.cohort_class || "");
+    setEditDept((dept?.code as DepartmentCode) || "DANCE");
+    setEditRole(roleAssignment?.role || "DANCE_MEMBER");
+    setEditStatus(member.status);
+    setEditError("");
+    setShowEditModal(true);
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: string) => {
-    if (!confirm(`Bạn có chắc muốn chuyển trạng thái thành viên sang ${newStatus}?`)) return;
-    await fetch(`/api/members/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
+  // Open Delete Modal
+  const openDeleteModal = (memberId: string, name: string, email: string) => {
+    if (memberId === session?.user.id) {
+      alert("Bạn không thể tự xóa tài khoản của chính mình!");
+      return;
+    }
+    setDeletingUser({ id: memberId, name, email });
+    setDeleteError("");
+    setShowDeleteModal(true);
+  };
+
+  // Submit Create Member
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreating(true);
+    setCreateError("");
+
+    const res = await createMember({
+      email: createEmail,
+      full_name: createName,
+      password: createPassword,
+      phone: createPhone,
+      cohort_class: createClass,
+      department_code: createDept,
+      role: createRole,
+      status: createStatus,
     });
-    await refresh();
+
+    if (res.success) {
+      setShowCreateModal(false);
+      setCreateEmail("");
+      setCreateName("");
+      setCreatePassword("123456");
+      setCreatePhone("");
+      setCreateClass("");
+    } else {
+      setCreateError(res.error || "Không thể tạo tài khoản");
+    }
+    setIsCreating(false);
+  };
+
+  // Submit Edit Member
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUserId) return;
+
+    setIsEditing(true);
+    setEditError("");
+
+    const updates: any = {
+      email: editEmail,
+      full_name: editName,
+      phone: editPhone,
+      cohort_class: editClass,
+      department_code: editDept,
+      role: editRole,
+      status: editStatus,
+    };
+    if (editPassword && editPassword.trim()) {
+      updates.password = editPassword.trim();
+    }
+
+    const res = await updateMember(editingUserId, updates);
+
+    if (res.success) {
+      setShowEditModal(false);
+      setEditingUserId(null);
+    } else {
+      setEditError(res.error || "Không thể cập nhật tài khoản");
+    }
+    setIsEditing(false);
+  };
+
+  // Submit Delete Member
+  const handleDeleteSubmit = async () => {
+    if (!deletingUser) return;
+    setIsDeleting(true);
+    setDeleteError("");
+
+    const res = await deleteMember(deletingUser.id);
+    if (res.success) {
+      setShowDeleteModal(false);
+      setDeletingUser(null);
+    } else {
+      setDeleteError(res.error || "Không thể xóa tài khoản");
+    }
+    setIsDeleting(false);
+  };
+
+  // Quick Status Toggle (Approve or Toggle Lock)
+  const handleQuickStatus = async (id: string, newStatus: UserStatus) => {
+    if (id === session?.user.id && newStatus === "INACTIVE") {
+      alert("Bạn không thể tự khóa tài khoản Admin của mình!");
+      return;
+    }
+    await updateMember(id, { status: newStatus });
   };
 
   const filteredMembers = data.profiles.filter((p) => {
@@ -105,10 +211,12 @@ export default function MembersPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white flex items-center gap-2.5">
             <Users className="w-7 h-7 text-mdc-red" />
-            <span>Quản Lý Danh Sách CLB & Phân Ban</span>
+            <span>Quản Lý Thành Viên & Tài Khoản CLB</span>
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm mt-1">
-            Theo dõi nhân sự 3 ban: Ban Chủ nhiệm, Ban Chuyên môn, Ban Truyền thông và xét duyệt thành viên mới.
+            {isBoardAdmin
+              ? "Toàn quyền quản trị nhân sự 3 ban: Thêm, chỉnh sửa, phân vai trò, đặt lại mật khẩu và xóa tài khoản."
+              : "Danh bạ thành viên CLB Vũ Đạo MTA — Học viện Kỹ thuật Quân sự."}
           </p>
         </div>
 
@@ -122,17 +230,30 @@ export default function MembersPage() {
             <span>Xuất CSV (Excel)</span>
           </a>
 
-          {session?.isBoardAdmin && (
+          {isBoardAdmin && (
             <button
-              onClick={() => setShowInviteModal(true)}
+              onClick={() => {
+                setCreateError("");
+                setShowCreateModal(true);
+              }}
               className="px-4 py-2 rounded-xl bg-mdc-red hover:bg-mdc-redDark text-xs font-semibold text-white transition-all flex items-center gap-2 shadow-glowRed active:scale-[0.98]"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Thêm / Mời Thành Viên</span>
+              <span>Thêm Tài Khoản Mới</span>
             </button>
           )}
         </div>
       </div>
+
+      {/* Non-Admin Notice */}
+      {!isBoardAdmin && (
+        <div className="p-3.5 bg-mdc-surface border border-mdc-border rounded-xl text-xs text-slate-400 flex items-center gap-2.5">
+          <ShieldAlert className="w-4 h-4 text-mdc-amber shrink-0" />
+          <span>
+            Bạn đang xem danh sách với quyền thành viên. Chức năng Thêm, Sửa, Xóa và Đặt lại mật khẩu tài khoản được bảo mật dành riêng cho <strong>Ban Chủ nhiệm (Admin)</strong>.
+          </span>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="p-4 bg-mdc-surface border border-mdc-border rounded-2xl flex flex-col md:flex-row items-center justify-between gap-3 shadow-sm">
@@ -165,9 +286,9 @@ export default function MembersPage() {
             className="bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-mdc-red"
           >
             <option value="ALL">Tất cả trạng thái</option>
-            <option value="ACTIVE">ACTIVE (Đang hoạt động)</option>
+            <option value="ACTIVE">ACTIVE (Hoạt động)</option>
             <option value="PENDING">PENDING (Chờ duyệt)</option>
-            <option value="INACTIVE">INACTIVE (Đã rời/Khóa)</option>
+            <option value="INACTIVE">INACTIVE (Đã khóa)</option>
           </select>
         </div>
       </div>
@@ -181,16 +302,16 @@ export default function MembersPage() {
                 <th className="py-3 px-4">Thành Viên</th>
                 <th className="py-3 px-4">Khóa / Lớp</th>
                 <th className="py-3 px-4">Ban Chính</th>
-                <th className="py-3 px-4">Vai Trò</th>
+                <th className="py-3 px-4">Vai Trò (Role)</th>
                 <th className="py-3 px-4">Trạng Thái</th>
-                {session?.isBoardAdmin && <th className="py-3 px-4 text-right">Thao Tác</th>}
+                {isBoardAdmin && <th className="py-3 px-4 text-right">Quản Trị Admin</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-mdc-border">
               {filteredMembers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400">
-                    Không tìm thấy thành viên nào phù hợp với bộ lọc
+                    Không tìm thấy thành viên nào phù hợp với bộ lọc.
                   </td>
                 </tr>
               ) : (
@@ -198,6 +319,7 @@ export default function MembersPage() {
                   const mem = data.departmentMemberships.find((m) => m.user_id === member.id && m.is_primary);
                   const dept = data.departments.find((d) => d.id === mem?.department_id);
                   const roles = data.roleAssignments.filter((r) => r.user_id === member.id).map((r) => r.role);
+                  const isCurrentLoggedUser = member.id === session?.user.id;
 
                   return (
                     <tr key={member.id} className="hover:bg-white/5 transition-colors">
@@ -207,8 +329,18 @@ export default function MembersPage() {
                             {member.full_name.charAt(0)}
                           </div>
                           <div>
-                            <div className="font-bold text-white text-xs">{member.full_name}</div>
+                            <div className="font-bold text-white text-xs flex items-center gap-1.5">
+                              {member.full_name}
+                              {isCurrentLoggedUser && (
+                                <span className="text-[10px] bg-mdc-red/20 text-mdc-red px-1.5 py-0.2 rounded font-semibold border border-mdc-red/30">
+                                  Bạn
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[11px] text-slate-400 font-mono">{member.email}</div>
+                            {member.phone && (
+                              <div className="text-[10px] text-slate-500 font-mono">{member.phone}</div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -220,10 +352,10 @@ export default function MembersPage() {
                       <td className="py-3.5 px-4">
                         <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
                           dept?.code === "BOARD"
-                            ? "bg-mdc-amber/20 text-mdc-amber"
+                            ? "bg-mdc-amber/20 text-mdc-amber border border-mdc-amber/30"
                             : dept?.code === "DANCE"
-                            ? "bg-mdc-red/20 text-mdc-red"
-                            : "bg-mdc-cyan/20 text-mdc-cyan"
+                            ? "bg-mdc-red/20 text-mdc-red border border-mdc-red/30"
+                            : "bg-mdc-cyan/20 text-mdc-cyan border border-mdc-cyan/30"
                         }`}>
                           {dept?.name || "Chưa phân"}
                         </span>
@@ -254,16 +386,17 @@ export default function MembersPage() {
                               ? "bg-mdc-amber"
                               : "bg-slate-400"
                           }`} />
-                          {member.status === "ACTIVE" ? "Hoạt động" : member.status === "PENDING" ? "Chờ duyệt" : "Tạm khóa"}
+                          {member.status === "ACTIVE" ? "Hoạt động" : member.status === "PENDING" ? "Chờ duyệt" : "Đã khóa"}
                         </span>
                       </td>
 
-                      {session?.isBoardAdmin && (
+                      {isBoardAdmin && (
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* Approve if PENDING */}
                             {member.status === "PENDING" && (
                               <button
-                                onClick={() => handleUpdateStatus(member.id, "ACTIVE")}
+                                onClick={() => handleQuickStatus(member.id, "ACTIVE")}
                                 title="Phê duyệt vào CLB"
                                 className="px-2.5 py-1 rounded-lg bg-mdc-emerald/20 text-mdc-emerald hover:bg-mdc-emerald/30 font-semibold text-[11px] transition-all flex items-center gap-1"
                               >
@@ -271,22 +404,47 @@ export default function MembersPage() {
                                 <span>Duyệt</span>
                               </button>
                             )}
-                            {member.status === "ACTIVE" && (
+
+                            {/* Quick Lock / Unlock */}
+                            {member.status === "ACTIVE" && !isCurrentLoggedUser && (
                               <button
-                                onClick={() => handleUpdateStatus(member.id, "INACTIVE")}
-                                title="Khóa / Chuyển trạng thái rời CLB"
-                                className="px-2.5 py-1 rounded-lg bg-white/5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 font-semibold text-[11px] transition-all"
+                                onClick={() => handleQuickStatus(member.id, "INACTIVE")}
+                                title="Khóa tài khoản"
+                                className="p-1.5 rounded-lg bg-mdc-card hover:bg-white/10 text-slate-400 hover:text-amber-400 transition-all"
                               >
-                                Khóa
+                                <Lock className="w-3.5 h-3.5" />
                               </button>
                             )}
+
                             {member.status === "INACTIVE" && (
                               <button
-                                onClick={() => handleUpdateStatus(member.id, "ACTIVE")}
-                                title="Kích hoạt lại tài khoản"
-                                className="px-2.5 py-1 rounded-lg bg-mdc-red/20 text-mdc-red hover:bg-mdc-red/30 font-semibold text-[11px] transition-all"
+                                onClick={() => handleQuickStatus(member.id, "ACTIVE")}
+                                title="Mở khóa tài khoản"
+                                className="p-1.5 rounded-lg bg-mdc-card hover:bg-white/10 text-slate-400 hover:text-mdc-emerald transition-all"
                               >
-                                Kích hoạt
+                                <Unlock className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {/* Edit Button */}
+                            <button
+                              onClick={() => openEditModal(member.id)}
+                              title="Chỉnh sửa tài khoản & phân quyền"
+                              className="p-1.5 rounded-lg bg-mdc-card hover:bg-white/10 text-slate-300 hover:text-white transition-all flex items-center gap-1 text-[11px]"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-mdc-cyan" />
+                              <span className="hidden lg:inline">Sửa</span>
+                            </button>
+
+                            {/* Delete Button (disabled for self) */}
+                            {!isCurrentLoggedUser && (
+                              <button
+                                onClick={() => openDeleteModal(member.id, member.full_name, member.email)}
+                                title="Xóa tài khoản vĩnh viễn"
+                                className="p-1.5 rounded-lg bg-mdc-card hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-all flex items-center gap-1 text-[11px]"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="hidden lg:inline">Xóa</span>
                               </button>
                             )}
                           </div>
@@ -301,90 +459,117 @@ export default function MembersPage() {
         </div>
       </div>
 
-      {/* Invite Member Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-mdc-surface border border-mdc-border rounded-2xl p-6 shadow-card space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-mdc-border">
+      {/* MODAL 1: THÊM TÀI KHOẢN MỚI */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-mdc-surface border border-mdc-border rounded-2xl max-w-lg w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-mdc-border mb-4">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-mdc-red" />
-                <span>Thêm Thành Viên Mới Vào CLB</span>
+                <span>Thêm Tài Khoản Thành Viên Mới</span>
               </h3>
               <button
-                onClick={() => setShowInviteModal(false)}
-                className="text-slate-400 hover:text-white"
+                onClick={() => setShowCreateModal(false)}
+                className="text-slate-400 hover:text-white p-1"
               >
-                &times;
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {errorMsg && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2">
+            {createError && (
+              <div className="mb-4 p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
+                <span>{createError}</span>
               </div>
             )}
 
-            <form onSubmit={handleInvite} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateSubmit} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Họ và Tên *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="ví dụ: Nguyễn Văn A"
+                    value={createName}
+                    onChange={(e) => setCreateName(e.target.value)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-mdc-red"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="a.nv@mtadancecrew.vn"
+                    value={createEmail}
+                    onChange={(e) => setCreateEmail(e.target.value)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-mdc-red"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Mật khẩu khởi tạo
+                  </label>
+                  <input
+                    type="text"
+                    value={createPassword}
+                    onChange={(e) => setCreatePassword(e.target.value)}
+                    placeholder="Mặc định: 123456"
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-mdc-red font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Số điện thoại
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="0912345678"
+                    value={createPhone}
+                    onChange={(e) => setCreatePhone(e.target.value)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-mdc-red"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Họ và Tên *</label>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Khóa / Lớp tại MTA
+                </label>
                 <input
                   type="text"
-                  required
-                  placeholder="Ví dụ: Hoàng Tuấn Kiệt"
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                  className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
+                  placeholder="ví dụ: K59 - CNTT"
+                  value={createClass}
+                  onChange={(e) => setCreateClass(e.target.value)}
+                  className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-mdc-red"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Email *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="kiet.ht@mtadancecrew.vn"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Khóa / Lớp</label>
-                  <input
-                    type="text"
-                    placeholder="K59 - CNTT"
-                    value={inviteClass}
-                    onChange={(e) => setInviteClass(e.target.value)}
-                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Số Điện Thoại</label>
-                  <input
-                    type="text"
-                    placeholder="0912..."
-                    value={invitePhone}
-                    onChange={(e) => setInvitePhone(e.target.value)}
-                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Ban Chính</label>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Ban Chính
+                  </label>
                   <select
-                    value={inviteDept}
+                    value={createDept}
                     onChange={(e) => {
-                      setInviteDept(e.target.value);
-                      if (e.target.value === "MEDIA") setInviteRole("MEDIA_MEMBER");
-                      else if (e.target.value === "BOARD") setInviteRole("BOARD_ADMIN");
-                      else setInviteRole("DANCE_MEMBER");
+                      const dept = e.target.value as DepartmentCode;
+                      setCreateDept(dept);
+                      if (dept === "BOARD") setCreateRole("BOARD_ADMIN");
+                      else if (dept === "MEDIA") setCreateRole("MEDIA_MEMBER");
+                      else setCreateRole("DANCE_MEMBER");
                     }}
-                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-mdc-red"
                   >
                     <option value="DANCE">Ban Chuyên môn</option>
                     <option value="MEDIA">Ban Truyền thông</option>
@@ -393,49 +578,266 @@ export default function MembersPage() {
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">Vai Trò</label>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Vai Trò (Role)
+                  </label>
                   <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
+                    value={createRole}
+                    onChange={(e) => setCreateRole(e.target.value as RoleCode)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-mdc-red"
                   >
-                    {inviteDept === "DANCE" && (
-                      <>
-                        <option value="DANCE_MEMBER">Vũ công Chuyên môn</option>
-                        <option value="DANCE_LEADER">Leader bài nhảy</option>
-                        <option value="DANCE_HEAD">Trưởng Ban Chuyên môn</option>
-                      </>
-                    )}
-                    {inviteDept === "MEDIA" && (
-                      <>
-                        <option value="MEDIA_MEMBER">Thành viên Truyền thông</option>
-                        <option value="MEDIA_HEAD">Trưởng Ban Truyền thông</option>
-                      </>
-                    )}
-                    {inviteDept === "BOARD" && (
-                      <option value="BOARD_ADMIN">Chủ nhiệm / Phó chủ nhiệm</option>
-                    )}
+                    <option value="DANCE_MEMBER">DANCE_MEMBER (Vũ công)</option>
+                    <option value="DANCE_LEADER">DANCE_LEADER (Leader bài)</option>
+                    <option value="DANCE_HEAD">DANCE_HEAD (Trưởng ban C.Môn)</option>
+                    <option value="MEDIA_MEMBER">MEDIA_MEMBER (Thành viên Media)</option>
+                    <option value="MEDIA_HEAD">MEDIA_HEAD (Trưởng ban Media)</option>
+                    <option value="BOARD_ADMIN">BOARD_ADMIN (Ban Chủ nhiệm)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Trạng Thái
+                  </label>
+                  <select
+                    value={createStatus}
+                    onChange={(e) => setCreateStatus(e.target.value as UserStatus)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-mdc-red"
+                  >
+                    <option value="ACTIVE">ACTIVE (Hoạt động)</option>
+                    <option value="PENDING">PENDING (Chờ duyệt)</option>
+                    <option value="INACTIVE">INACTIVE (Đã khóa)</option>
                   </select>
                 </div>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-mdc-border">
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-mdc-border mt-4">
                 <button
                   type="button"
-                  onClick={() => setShowInviteModal(false)}
-                  className="px-4 py-2 rounded-xl bg-mdc-card text-slate-400 hover:text-white font-semibold transition-all"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 rounded-xl bg-mdc-card hover:bg-white/10 text-slate-300 font-semibold"
                 >
-                  Hủy
+                  Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-mdc-red hover:bg-mdc-redDark text-white font-semibold shadow-glowRed transition-all active:scale-[0.98]"
+                  disabled={isCreating}
+                  className="px-5 py-2 rounded-xl bg-mdc-red hover:bg-mdc-redDark text-white font-bold transition-all shadow-glowRed disabled:opacity-50"
                 >
-                  {isSubmitting ? "Đang thêm..." : "Tạo Thành Viên"}
+                  {isCreating ? "Đang tạo..." : "Tạo Tài Khoản"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: CHỈNH SỬA TÀI KHOẢN (UPDATE) */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-mdc-surface border border-mdc-border rounded-2xl max-w-lg w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-mdc-border mb-4">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-mdc-cyan" />
+                <span>Chỉnh Sửa Thông Tin Tài Khoản</span>
+              </h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="mb-4 p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEditSubmit} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Họ và Tên *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Đặt Lại Mật Khẩu (Tùy chọn)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Để trống nếu không đổi..."
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-mdc-red font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Số Điện Thoại
+                  </label>
+                  <input
+                    type="text"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Khóa / Lớp MTA
+                </label>
+                <input
+                  type="text"
+                  value={editClass}
+                  onChange={(e) => setEditClass(e.target.value)}
+                  className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Ban Chính
+                  </label>
+                  <select
+                    value={editDept}
+                    onChange={(e) => setEditDept(e.target.value as DepartmentCode)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-mdc-red"
+                  >
+                    <option value="DANCE">Ban Chuyên môn</option>
+                    <option value="MEDIA">Ban Truyền thông</option>
+                    <option value="BOARD">Ban Chủ nhiệm</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Vai Trò (Role)
+                  </label>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as RoleCode)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-mdc-red"
+                  >
+                    <option value="DANCE_MEMBER">DANCE_MEMBER (Vũ công)</option>
+                    <option value="DANCE_LEADER">DANCE_LEADER (Leader bài)</option>
+                    <option value="DANCE_HEAD">DANCE_HEAD (Trưởng ban C.Môn)</option>
+                    <option value="MEDIA_MEMBER">MEDIA_MEMBER (Thành viên Media)</option>
+                    <option value="MEDIA_HEAD">MEDIA_HEAD (Trưởng ban Media)</option>
+                    <option value="BOARD_ADMIN">BOARD_ADMIN (Ban Chủ nhiệm)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Trạng Thái
+                  </label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as UserStatus)}
+                    className="w-full bg-mdc-card border border-mdc-border rounded-xl px-2.5 py-2 text-white focus:outline-none focus:border-mdc-red"
+                  >
+                    <option value="ACTIVE">ACTIVE (Hoạt động)</option>
+                    <option value="PENDING">PENDING (Chờ duyệt)</option>
+                    <option value="INACTIVE">INACTIVE (Đã khóa)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-mdc-border mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 rounded-xl bg-mdc-card hover:bg-white/10 text-slate-300 font-semibold"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEditing}
+                  className="px-5 py-2 rounded-xl bg-mdc-cyan/20 hover:bg-mdc-cyan/30 text-mdc-cyan border border-mdc-cyan/40 font-bold transition-all disabled:opacity-50"
+                >
+                  {isEditing ? "Đang lưu..." : "Lưu Thay Đổi"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: XÁC NHẬN XÓA TÀI KHOẢN (DELETE) */}
+      {showDeleteModal && deletingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-mdc-surface border border-red-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-4 border border-red-500/30">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-bold text-white text-center mb-2">
+              Xác Nhận Xóa Vĩnh Viễn Tài Khoản
+            </h3>
+
+            <p className="text-xs text-slate-300 text-center leading-relaxed mb-4">
+              Bạn có chắc chắn muốn xóa tài khoản <strong>{deletingUser.name}</strong> ({deletingUser.email}) khỏi hệ thống CLB?
+              <br />
+              <span className="text-red-400 font-semibold mt-1 inline-block">
+                Hành động này sẽ xóa vĩnh viễn quyền truy cập, phân công và nhật ký liên quan của thành viên này.
+              </span>
+            </p>
+
+            {deleteError && (
+              <div className="mb-4 p-3 bg-red-500/20 border border-red-500/40 rounded-xl text-xs text-red-200">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 rounded-xl bg-mdc-card hover:bg-white/10 text-slate-300 font-semibold text-xs"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteSubmit}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition-all shadow-lg shadow-red-600/30 disabled:opacity-50"
+              >
+                {isDeleting ? "Đang xóa..." : "Xóa Vĩnh Viễn"}
+              </button>
+            </div>
           </div>
         </div>
       )}

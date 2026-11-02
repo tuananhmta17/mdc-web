@@ -20,6 +20,7 @@ export interface Profile {
   cohort_class?: string; // Khóa / Lớp tại MTA (Học viện Kỹ thuật Quân sự)
   avatar_url?: string;
   status: UserStatus;
+  password?: string; // Mật khẩu đăng nhập (mặc định: 123456)
   created_at: string;
   updated_at: string;
 }

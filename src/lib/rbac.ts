@@ -92,6 +92,13 @@ export class RBAC {
     return session.isBoardAdmin;
   }
 
+  // Acceptance criterion: Delete member permissions (Cannot delete own account)
+  static canDeleteMember(session: CurrentUserSession, targetUserId: string): boolean {
+    if (!this.canAccessInternalData(session)) return false;
+    if (!session.isBoardAdmin) return false;
+    return session.user.id !== targetUserId;
+  }
+
   static canPublishAnnouncements(session: CurrentUserSession): boolean {
     if (!this.canAccessInternalData(session)) return false;
     return session.isBoardAdmin;

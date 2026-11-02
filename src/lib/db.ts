@@ -135,6 +135,26 @@ export function setActiveSessionUserId(userId: string): void {
   }
 }
 
+export function clearSessionUserId(): void {
+  ensureDirectoryExists();
+  try {
+    if (fs.existsSync(SESSION_FILE)) {
+      fs.unlinkSync(SESSION_FILE);
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+export function verifyUserPassword(user: Profile, passwordInput?: string): boolean {
+  if (!passwordInput || !passwordInput.trim()) return false;
+  if (user.password && user.password.trim()) {
+    return user.password === passwordInput;
+  }
+  // Default password fallback for demo and seeded accounts
+  return passwordInput === "123456" || passwordInput === "mdc@2026";
+}
+
 export function getCurrentSession(db?: DatabaseSchema, cookieUid?: string): CurrentUserSession {
   const currentDb = db || readDb();
   const userId = getActiveSessionUserId(cookieUid);
