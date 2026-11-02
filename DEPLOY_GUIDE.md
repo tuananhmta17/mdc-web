@@ -1,106 +1,67 @@
-# Hướng Dẫn Triển Khai Website MTA Dance Crew (`MDCWeb`) — Chạy Thực Tế 100% Miễn Phí (0đ)
+# Phát hành MDC Web 1.1.0
 
-Tài liệu này hướng dẫn bạn đưa website **MTA Dance Crew** lên mạng Internet để toàn thể thành viên CLB có thể truy cập bằng điện thoại hoặc máy tính mọi lúc mọi nơi mà **không tốn bất kỳ chi phí duy trì nào**.
+Ứng dụng dùng Next.js, phiên đăng nhập lưu phía máy chủ và Supabase làm kho dữ liệu chung trên Vercel. Bản production không tạo tài khoản mẫu, không nhận ID người dùng làm thông tin đăng nhập, không mô phỏng gửi email và không có chức năng reset qua API.
 
----
+## 1. Chuẩn bị dự án hiện có
 
-## 1. Tổng quan Kiến trúc Miễn Phí (0đ)
+Sử dụng đúng dự án Vercel đang chạy và giữ nguyên tên miền hiện tại. Không tạo một dự án khác để thay thế khi chưa xác định dự án cũ.
 
-- **Hosting & Tên miền**: [Vercel](https://vercel.com) (Miễn phí tên miền `https://mdc-web-*.vercel.app`, băng thông 100GB/tháng, tự động cấp chứng chỉ bảo mật HTTPS SSL).
-- **Cơ sở dữ liệu**: [Supabase](https://supabase.com) (Gói Free Tier: 500MB PostgreSQL, tự động sao lưu, hỗ trợ Row Level Security và Google OAuth).
-- **Gửi Email tự động**: **Gmail SMTP qua App Password** (Miễn phí 500 email/ngày gửi tới mọi hộp thư Gmail của thành viên mà không cần mua tên miền riêng).
-- **Lập lịch quét hạn tự động (Cron)**: Vercel Daily Cron (chạy tự động vào 08:00 sáng mỗi ngày giờ Việt Nam).
+Trong Supabase SQL Editor, chạy `supabase/migrations/002_production_storage.sql`. Migration này bổ sung cột `revision`, gỡ policy cho phép đọc/ghi công khai snapshot và chỉ cấp quyền cho máy chủ. Nếu khởi tạo hoàn toàn mới, có thể chạy riêng migration 002; runtime hiện dùng bảng `app_state_snapshots`, chưa dùng các bảng nghiệp vụ chuẩn hóa trong migration 001.
 
----
+**Trước khi áp dụng lên dữ liệu đang dùng:** sao lưu snapshot `latest_state` bằng công cụ quản trị Supabase. Không thay thế nó bằng file `data/mdc-db.json` trong repository vì đó là dữ liệu mẫu của bản cũ.
 
-## 2. Bước 1: Deploy Web lên Vercel
+## 2. Cấu hình production
 
-### Cách 1: Chạy lệnh Vercel CLI trực tiếp
-Mở PowerShell tại thư mục dự án và chạy:
+Đặt các biến sau trong **Settings → Environment Variables → Production** của dự án Vercel. Không đưa khóa thật vào Git hoặc chat.
+
+| Biến | Ý nghĩa |
+| --- | --- |
+| `APP_URL` | URL HTTPS chính thức, ví dụ tên miền hiện có của CLB |
+| `SUPABASE_URL` | URL dự án Supabase |
+| `SUPABASE_SECRET_KEY` | Khóa chỉ dành cho máy chủ; cũng hỗ trợ `SUPABASE_SERVICE_ROLE_KEY` cũ |
+| `CRON_SECRET` | Chuỗi ngẫu nhiên ít nhất 32 ký tự |
+| `GMAIL_USER`, `GMAIL_APP_PASSWORD` | Một tài khoản Gmail gửi thư và App Password tương ứng |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Dùng thay Gmail nếu chọn Resend; địa chỉ gửi cần được xác minh |
+
+Nếu database chưa có snapshot, cấu hình thêm `MDC_ADMIN_EMAIL`, `MDC_ADMIN_NAME`, `MDC_ADMIN_PASSWORD` (ít nhất 12 ký tự). Lần đăng nhập đầu tiên tạo duy nhất quản trị viên này và ba ban của CLB. Sau khi đã đăng nhập và lưu thành công, gỡ mật khẩu khởi tạo khỏi biến môi trường rồi redeploy. Không có mật khẩu mặc định.
+
+Nếu đang có snapshot từ bản demo: các mật khẩu dạng văn bản cũ không được chấp nhận. Cần chuyển mật khẩu thực tế sang scrypt bằng công cụ quản trị có kiểm soát trước khi phát hành. Không tiếp tục dùng mật khẩu `123456`, không xóa dữ liệu người dùng để giải quyết việc chuyển đổi. Lệnh kiểm tra production sẽ báo các tài khoản chưa được chuyển đổi.
+
+## 3. Kiểm tra và phát hành
+
 ```powershell
-cd f:\MySkill\MDCWeb
-npx vercel
+npm ci
+npm run release:check
+npm run check:production
 ```
-- Khi màn hình hỏi `Set up and deploy?` &rarr; Chọn `Y`.
-- Đăng nhập tài khoản Vercel (bằng GitHub hoặc Google) theo đường link trình duyệt hiện lên.
-- Chọn `Scope` (tài khoản cá nhân của bạn).
-- `Link to existing project?` &rarr; Chọn `N`.
-- `What's your project's name?` &rarr; Đặt tên (ví dụ: `mta-dance-crew` hoặc `mdc-web`).
-- `In which directory is your code located?` &rarr; Bấm `Enter` (mặc định `./`).
-- `Want to modify these settings?` &rarr; Chọn `N`.
 
-Chờ khoảng 1 phút, Vercel sẽ cung cấp đường dẫn web công khai dạng:
-**`https://mdc-web-xyz.vercel.app`**
+`release:check` chạy TypeScript, kiểm thử API trong thư mục tạm riêng, rồi build production. `check:production` kiểm tra cấu hình đã cung cấp cho tiến trình đang chạy (ví dụ `.env.local`); lệnh không tự đọc các biến trên tài khoản Vercel. Không gửi thư thử hoặc thay đổi dữ liệu khi chạy kiểm tra cấu hình.
 
-### Cách 2: Đẩy lên GitHub và kết nối Vercel Dashboard
-1. Tạo một repository mới trên GitHub (Private hoặc Public).
-2. Chạy lệnh:
-   ```powershell
-   cd f:\MySkill\MDCWeb
-   git init
-   git add .
-   git commit -m "feat: initial commit MTA Dance Crew Cloud Web"
-   git branch -M main
-   git remote add origin https://github.com/<tai-khoan-cua-ban>/mdc-web.git
-   git push -u origin main
-   ```
-3. Truy cập [vercel.com](https://vercel.com) &rarr; Nhấn **Add New Project** &rarr; Chọn repository `mdc-web` vừa đẩy &rarr; Nhấn **Deploy**.
+Chỉ triển khai sau khi đã có kết nối Vercel hợp lệ, migration thành công và biến production đúng. Khi dùng CLI đã đăng nhập:
 
----
+```powershell
+npx vercel link
+npx vercel --prod
+```
 
-## 3. Bước 2: Thiết lập Cơ Sở Dữ Liệu Supabase (Miễn Phí 500MB)
+Ở bước link, chọn **dự án hiện có**. Có thể dùng Git integration của dự án thay thế CLI. File `.vercelignore` loại dữ liệu mẫu, fixture kiểm thử và file môi trường khỏi gói upload.
 
-1. Truy cập [supabase.com](https://supabase.com) và đăng ký tài khoản miễn phí bằng GitHub hoặc Google.
-2. Nhấn **New Project**:
-   - **Name**: `MTA-Dance-Crew`
-   - **Database Password**: Đặt mật khẩu an toàn (ghi lại để dùng nếu cần).
-   - **Region**: Chọn `Southeast Asia (Singapore)` để có tốc độ truy cập từ Việt Nam nhanh nhất.
-3. Sau khi tạo xong dự án, vào menu bên trái chọn **SQL Editor** &rarr; **New Query**.
-4. Mở file [001_initial_schema.sql](file:///f:/MySkill/MDCWeb/supabase/migrations/001_initial_schema.sql), sao chép toàn bộ nội dung và dán vào ô SQL Editor trên Supabase, sau đó nhấn **Run** (Ctrl + Enter).
-5. Lấy thông tin kết nối:
-   - Vào mục **Project Settings** &rarr; **API**.
-   - Sao chép **Project URL** (`https://xxx.supabase.co`).
-   - Sao chép **anon public key** (`eyJh...`).
-   - Sao chép **service_role secret key** (`eyJh...`).
+## 4. Kiểm tra sau phát hành
 
----
+- Đăng nhập bằng tài khoản thật; tải lại vẫn giữ phiên, đăng xuất thì phiên cũ bị hủy.
+- Tạo thành viên, bài nhảy hoặc lịch tập được phép; xác nhận dữ liệu vẫn còn sau khi khởi động lại/redeploy.
+- Kiểm tra từng vai trò với tài khoản thật do quản trị viên cấp, không dùng bộ chuyển vai trò.
+- Kiểm tra email tới hộp thư thực tế và đường dẫn trong email trỏ về tên miền chính thức.
+- Cron trong `vercel.json` chạy lúc **08:00 giờ Việt Nam mỗi ngày**. Không coi đây là nhắc hạn chính xác từng phút; cần dịch vụ lập lịch thường xuyên hơn nếu CLB yêu cầu.
 
-## 4. Bước 3: Cấu hình Gửi Email Miễn Phí (Gmail App Password)
+## 5. Vận hành và giới hạn
 
-Để hệ thống tự động gửi email thông báo lịch tập, kết quả bình chọn và deadline mà **không tốn tiền mua tên miền riêng**:
-1. Đăng nhập tài khoản Google/Gmail mà bạn muốn dùng để gửi thông báo của CLB (ví dụ: `clb.mtadancecrew@gmail.com`).
-2. Bật tính năng **Xác minh 2 bước (2-Step Verification)** trong tài khoản Google.
-3. Truy cập đường dẫn: **`https://myaccount.google.com/apppasswords`**
-4. Tại ô "Tên ứng dụng", nhập: `MDC Web Notifications` rồi nhấn **Tạo (Create)**.
-5. Google sẽ tạo cho bạn một chuỗi **Mật khẩu ứng dụng gồm 16 chữ cái** (ví dụ: `abcd efgh ijkl mnop`). Hãy sao chép chuỗi này.
+Snapshot dùng revision để từ chối ghi đè khi hai serverless instance cùng cập nhật; người dùng nhận thông báo tải lại/thử lại, không nhận kết quả thành công giả. Không có fallback về `/tmp` hoặc dữ liệu trong bộ nhớ khi Supabase lỗi. Kho JSON local chỉ phục vụ một tiến trình Node trên ổ đĩa bền vững, không dùng nhiều instance hoặc Vercel.
 
----
+Worker lưu claim trước khi gửi để tránh hai lần chạy đồng thời gửi cùng thư, tôn trọng thời gian retry và chống trùng thông báo. Worker xử lý theo nhóm 5 thư song song, tối đa 50 thư mỗi lần và dừng nhận nhóm mới sau 40 giây. Với một lần quét mỗi ngày, hàng đợi lớn hoặc nhà cung cấp chậm cần tăng tần suất cron hay dùng hệ thống gửi thư chuyên dụng. Gmail/SMTP không bảo đảm gửi đúng một lần trong mọi tình huống mất mạng; thư bị gián đoạn được ghi lỗi để kiểm tra thay vì tự gửi lại không kiểm soát.
 
-## 5. Bước 4: Nhập Biến Môi Trường Trên Vercel
+Mật khẩu được băm scrypt. Cookie phiên có HttpOnly, SameSite và Secure khi chạy production. Khóa Supabase không được gửi xuống trình duyệt. Các API kiểm tra phân quyền độc lập với giao diện. Cần chính sách sao lưu ngoài ứng dụng cho dữ liệu thật; ứng dụng không tự tạo hoặc cam kết có bản sao lưu của nhà cung cấp.
 
-1. Truy cập vào Dashboard dự án trên [Vercel](https://vercel.com) &rarr; Chọn tab **Settings** &rarr; **Environment Variables**.
-2. Thêm các biến sau:
+## Kiểm tra giao diện local
 
-| Tên biến (Key) | Giá trị (Value) | Giải thích |
-|---|---|---|
-| `NEXT_PUBLIC_TIMEZONE` | `Asia/Ho_Chi_Minh` | Múi giờ Việt Nam (UTC+7) |
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://your-project-id.supabase.co` | URL dự án Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJh...` | Khóa Anon Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | `eyJh...` | Khóa Service Role Supabase |
-| `GMAIL_USER` | `clb.mtadancecrew@gmail.com` | Địa chỉ Gmail gửi thông báo |
-| `GMAIL_APP_PASSWORD` | `abcd efgh ijkl mnop` | Mật khẩu ứng dụng 16 chữ cái |
-| `CRON_SECRET` | `mdc_secret_cron_2026` | Token bảo mật Vercel Cron |
-
-3. Sau khi thêm biến môi trường, vào tab **Deployments** trên Vercel &rarr; Chọn dấu `...` bên cạnh bản deploy mới nhất &rarr; Nhấn **Redeploy**.
-
----
-
-## 6. Kiểm tra Hoạt Động Sau Khi Triển Khai
-
-1. Mở đường link `.vercel.app` trên điện thoại hoặc máy tính.
-2. Trên Header, dùng bộ chuyển đổi nhanh vai trò để kiểm tra góc nhìn của:
-   - **Chủ nhiệm (`BOARD_ADMIN`)**: Toàn quyền điều hành, duyệt thành viên, xem audit logs.
-   - **Trưởng Chuyên môn (`DANCE_HEAD`)**: Quản lý bài nhảy, tạo lịch tập, mở vote.
-   - **Trưởng Truyền thông (`MEDIA_HEAD`)**: Giao việc, bảng Kanban, duyệt link sản phẩm.
-   - **Tài khoản mới (`PENDING`)**: Xác thực màn hình khóa bảo mật Gatekeeper.
-3. Vào trang **Thông Báo & Outbox** &rarr; Bấm **Chạy Worker Quét Nhắc Hạn (Cron)** để kiểm tra luồng gửi mail tự động.
+Sau khi build, có thể dùng `npx tsx scripts/start-qa.ts` để xem fixture ở `http://localhost:3100`. Fixture chỉ nằm trong thư mục tạm riêng, không gửi email thật và bị loại khỏi deployment. Đây là công cụ kiểm tra cho người phát triển, không phải cách khởi chạy production. Dùng `npm start` với cấu hình thật để chạy bản chính thức.

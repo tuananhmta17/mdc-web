@@ -1,375 +1,60 @@
 "use client";
-
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import Image from "next/image";
+import { LayoutDashboard, Flame, Vote, CalendarDays, CalendarCheck2, KanbanSquare, Users, ShieldCheck, Bell, Settings, LogOut, Menu, X, ArrowUpRight, ChevronRight, RefreshCw } from "lucide-react";
 import { useAppState } from "@/lib/state-context";
-import {
-  LayoutDashboard,
-  Users,
-  Flame,
-  Vote,
-  CalendarDays,
-  CalendarCheck2,
-  KanbanSquare,
-  ShieldCheck,
-  Bell,
-  Settings,
-  RefreshCw,
-  LogOut,
-  ChevronDown,
-  Clock,
-  Sparkles,
-  CheckCircle2,
-  AlertTriangle,
-  LogIn,
-} from "lucide-react";
 
+const navigation = [
+  { href: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
+  { href: "/dances", label: "Bài nhảy", icon: Flame },
+  { href: "/polls", label: "Bình chọn", icon: Vote },
+  { href: "/availability", label: "Lịch rảnh", icon: CalendarDays },
+  { href: "/practice", label: "Lịch tập", icon: CalendarCheck2 },
+  { href: "/media/tasks", label: "Truyền thông", icon: KanbanSquare },
+  { href: "/members", label: "Thành viên", icon: Users, admin: true },
+  { href: "/board", label: "Điều hành CLB", icon: ShieldCheck, admin: true },
+];
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { data, loading, error, refresh, logout } = useAppState();
   const pathname = usePathname();
   const router = useRouter();
-  const { data, loading, switchUser, logout, markNotificationRead, runEmailWorker } = useAppState();
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
-  const [showNotifMenu, setShowNotifMenu] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-
-  // If on login page, render children without app shell layout
-  if (pathname === "/login") {
-    return <>{children}</>;
-  }
-
+  const [mobile, setMobile] = useState(false);
+  const [toast, setToast] = useState("");
   const session = data.session;
-  const isPending = data.isPendingApproval;
-  const unreadCount = data.notifications.filter((n) => !n.read_at).length;
-
-  const handleManualSync = async () => {
-    setIsSyncing(true);
-    await runEmailWorker();
-    setTimeout(() => setIsSyncing(false), 500);
-  };
-
-  const navItems = [
-    { label: "Tổng Quan", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Bài Nhảy", href: "/dances", icon: Flame },
-    { label: "Bình Chọn", href: "/polls", icon: Vote },
-    { label: "Lịch Rảnh", href: "/availability", icon: CalendarDays },
-    { label: "Lịch Tập", href: "/practice", icon: CalendarCheck2 },
-    { label: "Nhiệm Vụ Media", href: "/media/tasks", icon: KanbanSquare },
-    { label: "Thành Viên", href: "/members", icon: Users, boardOnly: true },
-    { label: "Điều Hành CLB", href: "/board", icon: ShieldCheck, boardOnly: true },
-    { label: "Thông Báo", href: "/notifications", icon: Bell },
-    { label: "Cài Đặt", href: "/settings", icon: Settings },
-  ];
-
-  return (
-    <div className="min-h-screen bg-mdc-bg text-slate-100 flex flex-col font-sans selection:bg-mdc-red selection:text-white">
-      {/* 1. Header Bar (Single-line 64px) */}
-      <header className="sticky top-0 z-50 h-16 bg-mdc-surface/90 backdrop-blur-md border-b border-mdc-border px-4 md:px-8 flex items-center justify-between">
-        {/* Brand Logo & Name */}
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="flex items-center gap-3 group">
-            <div className="relative w-10 h-10 rounded-full overflow-hidden border border-mdc-red/40 group-hover:border-mdc-red transition-all shadow-glowRed">
-              <Image
-                src="/logo-mdc.jpg"
-                alt="MTA Dance Crew Logo"
-                fill
-                className="object-cover"
-                priority
-              />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-extrabold tracking-wider text-base md:text-lg text-white group-hover:text-mdc-red transition-colors flex items-center gap-1.5">
-                MTA DANCE CREW
-                <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-mdc-red/20 text-mdc-red font-semibold border border-mdc-red/30">
-                  MDC
-                </span>
-              </span>
-              <span className="text-[11px] text-slate-400 hidden sm:inline">
-                Học viện Kỹ thuật Quân sự
-              </span>
-            </div>
-          </Link>
-        </div>
-
-        {/* Action Controls & Role Switcher */}
-        <div className="flex items-center gap-3">
-          {/* Quick Outbox & Sync Button */}
-          <button
-            onClick={handleManualSync}
-            title="Đồng bộ Email Outbox & Quét nhắc việc"
-            className="hidden lg:flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-mdc-card hover:bg-mdc-cardHover border border-mdc-border text-slate-300 hover:text-white transition-all active:scale-[0.98]"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin text-mdc-red" : ""}`} />
-            <span>Đồng bộ Mail</span>
-          </button>
-
-          {/* Notifications Bell */}
-          <div className="relative">
-            <button
-              onClick={() => setShowNotifMenu(!showNotifMenu)}
-              className="relative p-2 rounded-lg bg-mdc-card hover:bg-mdc-cardHover border border-mdc-border text-slate-300 hover:text-white transition-all active:scale-[0.98]"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-mdc-red text-[10px] font-bold text-white rounded-full flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-
-            {/* Notification Dropdown */}
-            {showNotifMenu && (
-              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-mdc-surface border border-mdc-border rounded-xl shadow-card overflow-hidden z-50">
-                <div className="p-3 bg-mdc-card border-b border-mdc-border flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                    Thông báo gần đây ({data.notifications.length})
-                  </span>
-                  {unreadCount > 0 && (
-                    <button
-                      onClick={() => markNotificationRead(undefined, true)}
-                      className="text-[11px] text-mdc-red hover:underline font-medium"
-                    >
-                      Đánh dấu tất cả đã đọc
-                    </button>
-                  )}
-                </div>
-                <div className="max-h-80 overflow-y-auto divide-y divide-mdc-border">
-                  {data.notifications.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-slate-400">
-                      Không có thông báo nào
-                    </div>
-                  ) : (
-                    data.notifications.slice(0, 5).map((n) => (
-                      <div
-                        key={n.id}
-                        className={`p-3 text-xs transition-colors hover:bg-white/5 ${
-                          !n.read_at ? "bg-mdc-red/5" : ""
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="font-semibold text-slate-200">{n.subject}</span>
-                          {!n.read_at && (
-                            <span className="w-2 h-2 rounded-full bg-mdc-red shrink-0 mt-1" />
-                          )}
-                        </div>
-                        <p className="text-slate-400 mt-1 text-[11px] line-clamp-2">{n.body}</p>
-                        {n.link_url && (
-                          <Link
-                            href={n.link_url}
-                            onClick={() => {
-                              markNotificationRead(n.id);
-                              setShowNotifMenu(false);
-                            }}
-                            className="inline-block mt-1.5 text-mdc-red font-semibold hover:underline text-[11px]"
-                          >
-                            Xem chi tiết &rarr;
-                          </Link>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-                <Link
-                  href="/notifications"
-                  onClick={() => setShowNotifMenu(false)}
-                  className="block p-2.5 text-center text-xs font-semibold bg-mdc-card text-slate-300 hover:text-white border-t border-mdc-border"
-                >
-                  Xem tất cả thông báo & hàng đợi email &rarr;
-                </Link>
-              </div>
-            )}
-          </div>
-
-          {/* Quick Role Switcher Pill (Interactive Simulator) */}
-          <div className="relative">
-            <button
-              onClick={() => setShowRoleMenu(!showRoleMenu)}
-              className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-lg bg-mdc-card hover:bg-mdc-cardHover border border-mdc-border text-left transition-all active:scale-[0.98]"
-            >
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-mdc-crimson to-mdc-red text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
-                {session?.user.full_name?.charAt(0) || "U"}
-              </div>
-              <div className="hidden sm:flex flex-col">
-                <span className="text-xs font-semibold text-white leading-tight flex items-center gap-1">
-                  {session?.user.full_name}
-                  {session?.isBoardAdmin && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-mdc-amber" />
-                  )}
-                </span>
-                <span className="text-[10px] font-mono text-slate-400">
-                  {session?.roles[0] || (isPending ? "CHỜ DUYỆT" : "THÀNH VIÊN")}
-                </span>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
-
-            {/* Role Switcher Menu */}
-            {showRoleMenu && (
-              <div className="absolute right-0 mt-2 w-72 bg-mdc-surface border border-mdc-border rounded-xl shadow-card overflow-hidden z-50">
-                <div className="p-3 bg-mdc-card border-b border-mdc-border">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
-                    Chuyển Đổi Nhanh 6 Vai Trò (Kiểm Thử)
-                  </span>
-                  <span className="text-[11px] text-slate-400">
-                    Bấm để trải nghiệm phân quyền theo đúng tài liệu kế hoạch.
-                  </span>
-                </div>
-                <div className="p-1 max-h-72 overflow-y-auto divide-y divide-mdc-border">
-                  {[
-                    { id: "u-board-1", role: "BOARD_ADMIN", name: "Nguyễn Quang Huy", desc: "Chủ nhiệm CLB (Toàn quyền)" },
-                    { id: "u-dance-head", role: "DANCE_HEAD", name: "Lê Hoàng Long", desc: "Trưởng Ban Chuyên môn" },
-                    { id: "u-dance-leader-2", role: "DANCE_LEADER", name: "Vũ Tiến Đạt", desc: "Leader Choreo 60 Năm" },
-                    { id: "u-dance-leader-1", role: "DANCE_LEADER", name: "Đỗ Phương Anh", desc: "Leader K-Pop Showcase" },
-                    { id: "u-dance-mem-1", role: "DANCE_MEMBER", name: "Phạm Bảo Ngọc", desc: "Vũ công Chuyên môn" },
-                    { id: "u-media-head", role: "MEDIA_HEAD", name: "Bùi Minh Trang", desc: "Trưởng Ban Truyền thông" },
-                    { id: "u-media-mem-1", role: "MEDIA_MEMBER", name: "Trịnh Đức Thắng", desc: "Thành viên Ban Truyền thông" },
-                    { id: "u-pending-guest", role: "PENDING", name: "Trần Tuấn Kiệt", desc: "Khách Google chưa duyệt (TC #1)" },
-                  ].map((account) => {
-                    const isCurrent = session?.user.id === account.id;
-                    return (
-                      <button
-                        key={account.id}
-                        onClick={() => {
-                          switchUser(account.id);
-                          setShowRoleMenu(false);
-                        }}
-                        className={`w-full text-left p-2.5 rounded-lg flex items-center justify-between text-xs transition-colors ${
-                          isCurrent ? "bg-mdc-red/15 text-white" : "hover:bg-white/5 text-slate-300"
-                        }`}
-                      >
-                        <div>
-                          <div className="font-semibold text-white flex items-center gap-1.5">
-                            {account.name}
-                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-white/10 text-slate-300">
-                              {account.role}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5">{account.desc}</div>
-                        </div>
-                        {isCurrent && <CheckCircle2 className="w-4 h-4 text-mdc-red shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Footer Controls: Login page link & Logout button */}
-                <div className="p-2.5 bg-mdc-card/90 border-t border-mdc-border flex items-center justify-between">
-                  <Link
-                    href="/login"
-                    onClick={() => setShowRoleMenu(false)}
-                    className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors"
-                  >
-                    <LogIn className="w-3.5 h-3.5 text-mdc-red" />
-                    <span>Trang đăng nhập</span>
-                  </Link>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setShowRoleMenu(false);
-                      await logout();
-                      router.push("/login");
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 text-[11px] font-semibold flex items-center gap-1.5 transition-all"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Đăng xuất</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* 2. Horizontal Navigation Tabs (Single line desktop, scrollable mobile) */}
-      <nav className="bg-mdc-surface border-b border-mdc-border px-4 md:px-8 overflow-x-auto no-scrollbar">
-        <div className="flex items-center gap-1 min-w-max py-2">
-          {navItems.map((item) => {
-            if (item.boardOnly && !session?.isBoardAdmin) return null;
-            const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
-            const Icon = item.icon;
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                  active
-                    ? "bg-mdc-red text-white shadow-glowRed"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
-
-      {/* 3. Main Content or Gatekeeper Screen */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        {isPending ? (
-          /* Gatekeeper screen for unapproved accounts (Acceptance criterion 1) */
-          <div className="max-w-2xl mx-auto my-12 bg-mdc-surface border border-mdc-border rounded-2xl p-8 text-center shadow-card">
-            <div className="w-16 h-16 rounded-full bg-mdc-amber/15 border border-mdc-amber/30 text-mdc-amber flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="w-8 h-8" />
-            </div>
-            <h2 className="text-2xl font-extrabold text-white mb-2">
-              Tài Khoản Đang Chờ Phê Duyệt
-            </h2>
-            <p className="text-slate-300 text-sm leading-relaxed mb-6">
-              Xin chào <strong>{session?.user.full_name}</strong> ({session?.user.email}).<br />
-              Theo tiêu chí bảo mật nội bộ của <strong>MTA Dance Crew</strong>, tài khoản đăng nhập bằng Google cần được <strong>Ban Chủ nhiệm</strong> phê duyệt trước khi có thể xem danh sách thành viên, bài nhảy, lịch tập và tài liệu nội bộ.
-            </p>
-
-            <div className="p-4 bg-mdc-card rounded-xl border border-mdc-border text-xs text-slate-400 text-left mb-6 space-y-1.5">
-              <div><strong>Trạng thái:</strong> <span className="text-mdc-amber font-semibold">PENDING (Chờ duyệt)</span></div>
-              <div><strong>Đơn vị:</strong> CLB Vũ Đạo MTA — Học viện Kỹ thuật Quân sự</div>
-              <div><strong>Liên hệ phê duyệt:</strong> Ban Chủ nhiệm (Email: huy.nq@mtadancecrew.vn)</div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                onClick={() => switchUser("u-board-1")}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-mdc-red text-white font-semibold text-xs hover:bg-mdc-redDark transition-all active:scale-[0.98] shadow-glowRed"
-              >
-                Chuyển sang tài khoản Ban Chủ nhiệm để Duyệt
-              </button>
-            </div>
-          </div>
-        ) : (
-          children
-        )}
-      </main>
-
-      {/* 4. Footer */}
-      <footer className="border-t border-mdc-border bg-mdc-surface/50 py-6 px-4 md:px-8 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-slate-400">
-            <span>MTA Dance Crew &copy; {new Date().getFullYear()}</span>
-            <span>&bull;</span>
-            <span className="font-mono text-[11px] text-mdc-red">Múi giờ Asia/Ho_Chi_Minh</span>
-          </div>
-          <div className="flex items-center gap-4 text-slate-400 text-[11px]">
-            <span>Đã kích hoạt RBAC 6 Vai Trò</span>
-            <span>&bull;</span>
-            <button
-              onClick={() => {
-                if (confirm("Bạn có chắc chắn muốn đặt lại dữ liệu về trạng thái ban đầu?")) {
-                  data.session && switchUser("u-board-1");
-                  fetch("/api/system/reset", { method: "POST" }).then(() => window.location.reload());
-                }
-              }}
-              className="text-slate-400 hover:text-mdc-red underline"
-            >
-              Đặt lại dữ liệu mẫu
-            </button>
-          </div>
-        </div>
-      </footer>
+  const unread = data.notifications.filter(n => !n.read_at).length;
+  useEffect(() => { if (!loading && !session && !error && pathname !== "/login") router.replace("/login"); }, [loading, session, error, pathname, router]);
+  useEffect(() => { setMobile(false); }, [pathname]);
+  useEffect(() => {
+    const handler = (e: Event) => setToast((e as CustomEvent<string>).detail);
+    window.addEventListener("mdc-error", handler); return () => window.removeEventListener("mdc-error", handler);
+  }, []);
+  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(""), 6000); return () => clearTimeout(timer); }, [toast]);
+  if (pathname === "/login") return <>{children}</>;
+  if (loading || (!session && !error)) return <div className="min-h-screen flex items-center justify-center gap-3 text-slate-400"><RefreshCw size={20} className="animate-spin text-mdc-red" />Đang tải không gian MDC…</div>;
+  if (!session) return <div className="min-h-screen grid place-items-center p-6"><div className="panel max-w-lg text-center"><h1 className="text-xl font-bold mb-3">Chưa thể kết nối hệ thống</h1><p className="text-slate-400 mb-6">{error}</p><button onClick={() => void refresh()} className="primary-button">Thử lại</button><Link href="/login" className="block mt-4 text-sm text-slate-400">Về trang đăng nhập</Link></div></div>;
+  const current = [...navigation, { href: "/notifications", label: "Thông báo" }, { href: "/settings", label: "Cài đặt" }].find(n => pathname.startsWith(n.href));
+  const role = session.isBoardAdmin ? "Ban Chủ nhiệm" : session.isDanceHead ? "Trưởng ban Chuyên môn" : session.isMediaHead ? "Trưởng ban Truyền thông" : session.isDanceLeader ? "Leader bài nhảy" : "Thành viên";
+  return <div className="app-layout">
+    <a href="#main-content" className="skip-link">Đến nội dung chính</a>
+    {mobile && <button aria-label="Đóng menu" className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobile(false)} />}
+    <aside className={`app-sidebar ${mobile ? "is-open" : ""}`}>
+      <Link href="/dashboard" className="flex items-center gap-3 px-5 pt-8 pb-9"><Image src="/logo-mdc.jpg" alt="MDC" width={43} height={43} className="rounded-full border border-white/10" priority /><div><strong className="text-sm tracking-wider text-white">MTA DANCE CREW</strong><span className="block mt-1 text-[10px] tracking-[.18em] text-slate-500">MOVE AS ONE</span></div></Link>
+      <p className="eyebrow px-6 mb-3 text-slate-500">KHÔNG GIAN CLB</p>
+      <nav aria-label="Điều hướng chính" className="space-y-1 px-3">{navigation.filter(n => !n.admin || session.isBoardAdmin).map(n => <Link key={n.href} href={n.href} aria-current={pathname.startsWith(n.href) ? "page" : undefined} className={`nav-link ${pathname.startsWith(n.href) ? "active" : ""}`}><n.icon size={18} strokeWidth={1.7} /><span>{n.label}</span>{pathname.startsWith(n.href) && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-mdc-red" />}</Link>)}</nav>
+      <div className="mt-auto pt-8 px-3"><div className="mx-2 mb-6 rounded-2xl border border-mdc-red/15 bg-mdc-red/5 p-4"><span className="text-xs font-bold text-mdc-red">CÙNG NHAU TIẾN BỘ.</span><p className="text-xs leading-relaxed mt-2 text-slate-400">Đừng quên cập nhật lịch rảnh để cả đội cùng lên nhịp.</p><Link href="/availability" className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-200">Cập nhật ngay <ArrowUpRight size={14} /></Link></div>
+        <Link href="/settings" className={`nav-link ${pathname === "/settings" ? "active" : ""}`}><Settings size={18} />Cài đặt tài khoản</Link>
+        <button className="nav-link w-full text-left mb-5" onClick={() => { void logout().then(() => router.replace("/login")).catch(err => setToast(err.message)); }}><LogOut size={18} />Đăng xuất</button>
+      </div>
+      <div className="border-t border-mdc-border px-5 py-5 flex items-center gap-3"><div className="avatar">{session.user.full_name.split(" ").slice(-2).map(n => n[0]).join("")}</div><div className="min-w-0"><p className="text-sm font-semibold text-white truncate">{session.user.full_name}</p><p className="text-[11px] text-slate-500 mt-0.5">{role}</p></div></div>
+    </aside>
+    <div className="app-workspace">
+      <header className="app-topbar"><div className="flex items-center gap-3"><button onClick={() => setMobile(!mobile)} aria-label="Mở menu điều hướng" aria-expanded={mobile} className="icon-button lg:hidden"><Menu size={20} /></button><span className="text-slate-500 text-sm hidden sm:block">Không gian MDC</span><ChevronRight size={14} className="text-slate-600 hidden sm:block" /><span className="text-sm font-medium text-slate-200">{current?.label || "Chi tiết"}</span></div><div className="flex items-center gap-4"><span className="text-xs text-slate-500 hidden md:inline">{new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date())}</span><Link href="/notifications" aria-label={`Thông báo, ${unread} chưa đọc`} className="icon-button relative"><Bell size={19} />{unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-mdc-red" />}</Link><span className="hidden sm:block h-6 w-px bg-mdc-border" /><span className="text-xs font-semibold text-slate-400 hidden sm:block">MDC <span className="text-mdc-red">/</span> WORKSPACE</span></div></header>
+      <main id="main-content" className="app-main">
+        {(error || toast) && <div role="alert" className="mb-6 flex justify-between gap-3 rounded-xl border border-red-400/25 bg-red-400/10 p-4 text-sm text-red-200"><span>{toast || error}</span><button aria-label="Đóng thông báo lỗi" onClick={() => { setToast(""); if (error) void refresh(); }}><X size={18} /></button></div>}
+        {data.isPendingApproval ? <div className="panel max-w-xl mx-auto mt-16 text-center"><ShieldCheck className="text-mdc-red mx-auto mb-5" size={40} /><h1 className="text-2xl font-bold">Tài khoản đang chờ duyệt</h1><p className="mt-4 text-slate-400 leading-relaxed">Chào {session.user.full_name}, Ban Chủ nhiệm cần phê duyệt tài khoản trước khi bạn tham gia các hoạt động nội bộ.</p><button onClick={() => void refresh()} className="primary-button mt-6">Kiểm tra trạng thái</button></div> : children}
+      </main><footer className="px-6 lg:px-10 pb-6 flex flex-wrap justify-between gap-2 text-[11px] text-slate-600"><span>© {new Date().getFullYear()} MTA Dance Crew</span><span>Học viện Kỹ thuật Quân sự · Giờ Việt Nam</span></footer>
     </div>
-  );
+  </div>;
 }

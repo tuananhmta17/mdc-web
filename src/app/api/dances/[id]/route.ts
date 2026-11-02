@@ -1,14 +1,17 @@
+import { visibleDatabase } from "@/lib/visibility";
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { DanceStatus, DanceVisibility } from "@/lib/types";
 
-export async function GET(
+async function handlerGET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = readDb();
+  const db = visibleDatabase(readDb(), getCurrentSession());
   const session = getCurrentSession(db);
 
   if (!RBAC.canAccessInternalData(session)) {
@@ -23,7 +26,7 @@ export async function GET(
   return NextResponse.json(dance);
 }
 
-export async function PATCH(
+async function handlerPATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -44,6 +47,7 @@ export async function PATCH(
   try {
     const body = await req.json();
     const beforeState = { ...dance };
+    if (!session.isBoardAdmin && !session.isDanceHead && Object.keys(body).some(key => ["leader_id", "visibility", "status"].includes(key))) return NextResponse.json({ error: "Chỉ Trưởng ban hoặc Ban Chủ nhiệm được thay đổi phân công và trạng thái bài nhảy." }, { status: 403 });
     const { title, song_title, description, music_url, video_url, cover_url, leader_id, capacity, visibility, status, target_performance_date } = body;
 
     // Leader can only update practice notes/details, not reassign leader or visibility
@@ -69,7 +73,7 @@ export async function PATCH(
     dance.updated_at = new Date().toISOString();
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "UPDATE_DANCE",
       entity_type: "dances",
@@ -85,3 +89,6 @@ export async function PATCH(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const GET = withApi(handlerGET);
+export const PATCH = withApi(handlerPATCH);

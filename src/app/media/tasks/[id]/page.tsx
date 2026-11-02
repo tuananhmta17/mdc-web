@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { formatVNDateTime, isValidHttpUrl } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -54,20 +54,22 @@ export default function MediaTaskDetailPage({
           setProgressVal(json.progress_percent || 0);
         }
       })
-      .finally(() => setLoading(false));
+      .catch(() => setTaskDetail(null)).finally(() => setLoading(false));
   };
 
   useEffect(() => {
     loadTask();
   }, [id, data.mediaTasks, data.mediaSubmissions]);
 
-  if (loading || !taskDetail) {
+  if (loading) {
     return (
       <div className="py-24 text-center text-slate-400 text-sm">
         Đang tải thông tin nhiệm vụ...
       </div>
     );
   }
+
+  if (!taskDetail) return <div className="panel text-center text-slate-400">Không tìm thấy nhiệm vụ hoặc bạn không có quyền truy cập. <Link href="/media/tasks" className="text-mdc-red">Về bảng công việc</Link></div>;
 
   const isAssignee = taskDetail.assignee_id === session?.user.id;
   const isManager = session?.isBoardAdmin || session?.isMediaHead;
@@ -86,7 +88,7 @@ export default function MediaTaskDetailPage({
 
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/media/tasks/${id}/submissions`, {
+      const res = await apiRequest(`/api/media/tasks/${id}/submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: submitUrl, note: submitNote }),
@@ -112,7 +114,7 @@ export default function MediaTaskDetailPage({
   const handleReview = async (submissionId: string, status: "APPROVED" | "REVISION_REQUESTED") => {
     setIsReviewing(true);
     try {
-      const res = await fetch(`/api/media/submissions/${submissionId}/review`, {
+      const res = await apiRequest(`/api/media/submissions/${submissionId}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ review_status: status, feedback: reviewFeedback }),
@@ -135,12 +137,12 @@ export default function MediaTaskDetailPage({
 
   const handleUpdateProgress = async (newProgress: number) => {
     setProgressVal(newProgress);
-    await fetch(`/api/media/tasks/${id}`, {
+    try { await apiRequest(`/api/media/tasks/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ progress_percent: newProgress }),
     });
-    await refresh();
+    await refresh(); } catch { setProgressVal(taskDetail.progress_percent); }
   };
 
   return (

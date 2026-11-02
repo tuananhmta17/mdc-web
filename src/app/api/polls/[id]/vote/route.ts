@@ -1,9 +1,11 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { DanceVote } from "@/lib/types";
 
-export async function POST(
+async function handlerPOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -19,6 +21,7 @@ export async function POST(
   if (round.status !== "OPEN") {
     return NextResponse.json({ error: "Đợt bình chọn này đã đóng hoặc đã chốt kết quả." }, { status: 400 });
   }
+  if (Date.now() < Date.parse(round.start_at) || Date.now() >= Date.parse(round.end_at)) return NextResponse.json({ error: "Đợt bình chọn chưa bắt đầu hoặc đã hết hạn." }, { status: 400 });
 
   // Acceptance criterion 2: Scope check
   if (!RBAC.canVotePoll(session, round)) {
@@ -51,7 +54,7 @@ export async function POST(
       vote.option_id = option_id;
     } else {
       vote = {
-        id: `v-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: `v-${randomUUID()}-${Math.random().toString(36).substring(2, 6)}`,
         round_id: id,
         option_id,
         user_id: session.user.id,
@@ -66,3 +69,5 @@ export async function POST(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withApi(handlerPOST);

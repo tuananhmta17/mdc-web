@@ -1,0 +1,10 @@
+data/
+tests/
+src/lib/seed.ts
+scripts/start-qa.ts
+.env*
+!.env.example
+*.jpg
+!public/**
+artifacts/
+RELEASE_REPORT.md

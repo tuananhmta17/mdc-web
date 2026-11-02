@@ -1,10 +1,12 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { DanceRegistration } from "@/lib/types";
 import { createNotificationAndOutbox } from "@/lib/notifications";
 
-export async function POST(
+async function handlerPOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -35,12 +37,17 @@ export async function POST(
 
     if (cancel) {
       if (existingIndex >= 0) {
+        const released = ["REGISTERED", "APPROVED"].includes(db.dance_registrations[existingIndex].status);
         db.dance_registrations.splice(existingIndex, 1);
+        const waiting = db.dance_registrations.filter(r => r.dance_id === id && r.status === "WAITLISTED").sort((a, b) => Date.parse(a.registered_at) - Date.parse(b.registered_at))[0];
+        if (released && waiting) waiting.status = "REGISTERED";
         writeDb(db);
         return NextResponse.json({ success: true, message: "Đã hủy đăng ký" });
       }
       return NextResponse.json({ error: "Chưa đăng ký bài này" }, { status: 400 });
     }
+
+    if (!["RECRUITING", "SELECTED", "PRACTICING"].includes(dance.status)) return NextResponse.json({ error: "Bài nhảy hiện chưa mở đăng ký." }, { status: 400 });
 
     if (existingIndex >= 0) {
       return NextResponse.json({ error: "Bạn đã đăng ký bài nhảy này rồi" }, { status: 409 });
@@ -54,7 +61,7 @@ export async function POST(
     const regStatus = approvedCount >= dance.capacity ? "WAITLISTED" : "REGISTERED";
 
     const newReg: DanceRegistration = {
-      id: `reg-${Date.now()}`,
+      id: `reg-${randomUUID()}`,
       dance_id: id,
       user_id: session.user.id,
       note: note || "",
@@ -84,7 +91,7 @@ export async function POST(
   }
 }
 
-export async function PATCH(
+async function handlerPATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -111,6 +118,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Registration not found" }, { status: 404 });
     }
 
+    if (["REGISTERED", "APPROVED"].includes(status) && !["REGISTERED", "APPROVED"].includes(reg.status) && db.dance_registrations.filter(r => r.dance_id === id && r.id !== reg.id && ["REGISTERED", "APPROVED"].includes(r.status)).length >= dance.capacity) return NextResponse.json({ error: "Đội hình đã đủ số lượng." }, { status: 409 });
     reg.status = status;
     if (status === "APPROVED") {
       reg.approved_at = new Date().toISOString();
@@ -136,3 +144,6 @@ export async function PATCH(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withApi(handlerPOST);
+export const PATCH = withApi(handlerPATCH);

@@ -1,9 +1,11 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { AttendanceStatus } from "@/lib/types";
 
-export async function POST(
+async function handlerPOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -32,6 +34,8 @@ export async function POST(
     if (!user_id || !["PRESENT", "LATE", "EXCUSED", "ABSENT"].includes(status)) {
       return NextResponse.json({ error: "Invalid user_id or status" }, { status: 400 });
     }
+    if (!db.dance_registrations.some(r => r.dance_id === practice.dance_id && r.user_id === user_id && ["REGISTERED", "APPROVED"].includes(r.status)) && dance.leader_id !== user_id) return NextResponse.json({ error: "Chỉ điểm danh thành viên thuộc đội hình." }, { status: 400 });
+    if (practice.status === "CANCELLED") return NextResponse.json({ error: "Buổi tập đã hủy." }, { status: 400 });
 
     const existing = db.practice_attendance.find(
       (a) => a.session_id === id && a.user_id === user_id
@@ -44,7 +48,7 @@ export async function POST(
       existing.marked_at = new Date().toISOString();
     } else {
       db.practice_attendance.push({
-        id: `att-${Date.now()}-${user_id}`,
+        id: `att-${randomUUID()}-${user_id}`,
         session_id: id,
         user_id,
         status,
@@ -60,3 +64,5 @@ export async function POST(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withApi(handlerPOST);

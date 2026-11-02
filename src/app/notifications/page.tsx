@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { formatVNDateTime } from "@/lib/utils";
 import {
   Bell,
@@ -48,22 +48,22 @@ export default function NotificationsPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white flex items-center gap-2.5">
             <Bell className="w-7 h-7 text-mdc-red" />
-            <span>Trung Tâm Thông Báo & Hàng Đợi Email (Outbox)</span>
+            <span>Thông báo</span>
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm mt-1">
-            Hệ thống thông báo nội bộ và quản lý hàng đợi gửi email tự động (Resend / Gmail API) theo giờ Việt Nam.
+            Những cập nhật mới về lịch tập, bình chọn và công việc của bạn.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
+          {session?.isBoardAdmin && <button
             onClick={handleRunWorker}
             disabled={isProcessing}
             className="px-4 py-2.5 rounded-xl bg-mdc-red hover:bg-mdc-redDark text-xs font-bold text-white transition-all shadow-glowRed active:scale-[0.98] flex items-center gap-2"
           >
             <RefreshCw className={`w-4 h-4 ${isProcessing ? "animate-spin" : ""}`} />
-            <span>Chạy Worker Quét Nhắc Hạn (Cron)</span>
-          </button>
+            <span>Xử lý email chờ gửi</span>
+          </button>}
         </div>
       </div>
 
@@ -271,6 +271,7 @@ export default function NotificationsPage() {
 
             <div className="flex-1 overflow-y-auto border border-mdc-border rounded-xl bg-white p-2">
               <iframe
+                sandbox=""
                 title="Email Preview"
                 srcDoc={selectedEmail.body_html}
                 className="w-full h-96 border-0"

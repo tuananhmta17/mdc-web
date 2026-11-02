@@ -1,72 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentSession, readDb, setActiveSessionUserId, verifyUserPassword } from "@/lib/db";
+import { buildSession, readDb, writeDb, withApi } from "@/lib/db";
+import { newToken, tokenHash, verifyPassword, sessionCookieOptions } from "@/lib/security";
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const { email, password, userId } = body;
-    const db = readDb();
-
-    let user;
-
-    // Support 1-click test login by userId
-    if (userId) {
-      user = db.profiles.find((p) => p.id === userId);
-      if (!user) {
-        return NextResponse.json({ error: "Không tìm thấy tài khoản người dùng." }, { status: 404 });
-      }
-    } else {
-      // Standard login by email + password
-      if (!email || !email.trim()) {
-        return NextResponse.json({ error: "Vui lòng nhập địa chỉ email." }, { status: 400 });
-      }
-      if (!password || !password.trim()) {
-        return NextResponse.json({ error: "Vui lòng nhập mật khẩu." }, { status: 400 });
-      }
-
-      user = db.profiles.find((p) => p.email.trim().toLowerCase() === email.trim().toLowerCase());
-      if (!user) {
-        return NextResponse.json(
-          { error: "Email hoặc mật khẩu không chính xác." },
-          { status: 401 }
-        );
-      }
-
-      const isPasswordValid = verifyUserPassword(user, password);
-      if (!isPasswordValid) {
-        return NextResponse.json(
-          { error: "Email hoặc mật khẩu không chính xác." },
-          { status: 401 }
-        );
-      }
-    }
-
-    // Check account status
-    if (user.status === "INACTIVE") {
-      return NextResponse.json(
-        { error: "Tài khoản của bạn hiện đang bị khóa bởi Ban Chủ nhiệm. Vui lòng liên hệ BCN CLB." },
-        { status: 403 }
-      );
-    }
-
-    setActiveSessionUserId(user.id);
-    const session = getCurrentSession(db, user.id);
-
-    const res = NextResponse.json({
-      success: true,
-      user,
-      session,
-      message: "Đăng nhập thành công!",
-    });
-
-    res.cookies.set("mdc_uid", user.id, {
-      path: "/",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
-    });
-
-    return res;
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Lỗi máy chủ" }, { status: 500 });
-  }
-}
+export const POST = withApi(async (req: NextRequest) => {
+  const { email, password, userId } = await req.json();
+  if (userId || typeof email !== "string" || typeof password !== "string" || !email.trim() || !password) return NextResponse.json({ error: "Vui lòng nhập email và mật khẩu." }, { status: 400 });
+  const db = readDb();
+  const normalized = email.trim().toLowerCase();
+  const key = tokenHash(normalized);
+  db.auth_attempts = (db.auth_attempts || []).filter(a => Date.parse(a.reset_at) > Date.now()).slice(-2000);
+  let attempt = db.auth_attempts.find(a => a.key === key);
+  if (attempt && attempt.count >= 10) return NextResponse.json({ error: "Đã thử quá nhiều lần. Vui lòng thử lại sau 15 phút." }, { status: 429, headers: { "retry-after": "900" } });
+  if (!attempt) { attempt = { key, count: 0, reset_at: new Date(Date.now() + 15 * 60000).toISOString() }; db.auth_attempts.push(attempt); }
+  attempt.count++;
+  writeDb(db);
+  const user = db.profiles.find(p => p.email.trim().toLowerCase() === normalized);
+  const fallback = "scrypt:00000000000000000000000000000000:" + "0".repeat(128);
+  const valid = verifyPassword(password, user?.password?.startsWith("scrypt:") ? user.password : fallback);
+  if (!user || !valid) return NextResponse.json({ error: "Email hoặc mật khẩu không chính xác." }, { status: 401 });
+  if (user.status === "INACTIVE") return NextResponse.json({ error: "Tài khoản đã bị khóa. Vui lòng liên hệ Ban Chủ nhiệm." }, { status: 403 });
+  db.auth_attempts = db.auth_attempts.filter(a => a.key !== key);
+  const token = newToken();
+  const oldToken = req.cookies.get("mdc_session")?.value;
+  db.auth_sessions = (db.auth_sessions || []).filter(s => Date.parse(s.expires_at) > Date.now() && s.token_hash !== tokenHash(oldToken || "")).slice(-5000);
+  db.auth_sessions.push({ token_hash: tokenHash(token), user_id: user.id, expires_at: new Date(Date.now() + sessionCookieOptions.maxAge * 1000).toISOString() });
+  const res = NextResponse.json({ success: true, user, session: buildSession(db, user.id) });
+  res.cookies.set("mdc_session", token, sessionCookieOptions);
+  res.cookies.set("mdc_uid", "", { path: "/", maxAge: 0 });
+  return res;
+}, { public: true, commitOnError: true });

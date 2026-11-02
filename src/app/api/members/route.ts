@@ -1,10 +1,14 @@
+import { hashPassword } from "@/lib/security";
+import { visibleDatabase } from "@/lib/visibility";
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionFromRequest, readDb, writeDb } from "@/lib/db";
+import { getCurrentSession, getSessionFromRequest, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { Profile, RoleAssignment, DepartmentMembership, UserStatus, RoleCode } from "@/lib/types";
 
-export async function GET(req: NextRequest) {
-  const db = readDb();
+async function handlerGET(req: NextRequest) {
+  const db = visibleDatabase(readDb(), getCurrentSession());
   const session = getSessionFromRequest(req, db);
 
   if (!RBAC.canAccessInternalData(session)) {
@@ -24,7 +28,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(result);
 }
 
-export async function POST(req: NextRequest) {
+async function handlerPOST(req: NextRequest) {
   const db = readDb();
   const session = getSessionFromRequest(req, db);
 
@@ -44,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Địa chỉ email này đã tồn tại trong hệ thống." }, { status: 409 });
     }
 
-    const newId = `u-${Date.now()}`;
+    const newId = `u-${randomUUID()}`;
     const newProfile: Profile = {
       id: newId,
       email: email.trim().toLowerCase(),
@@ -52,7 +56,7 @@ export async function POST(req: NextRequest) {
       phone: phone?.trim() || "",
       cohort_class: cohort_class?.trim() || "",
       status: (status as UserStatus) || "ACTIVE",
-      password: password?.trim() || "123456",
+      password: hashPassword(password),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -62,7 +66,7 @@ export async function POST(req: NextRequest) {
     const dept = db.departments.find((d) => d.code === (department_code || "DANCE"));
     if (dept) {
       const newMem: DepartmentMembership = {
-        id: `dm-${Date.now()}`,
+        id: `dm-${randomUUID()}`,
         user_id: newId,
         department_id: dept.id,
         is_primary: true,
@@ -74,8 +78,10 @@ export async function POST(req: NextRequest) {
 
     // Assign role
     const assignedRole = (role as RoleCode) || (dept?.code === "MEDIA" ? "MEDIA_MEMBER" : "DANCE_MEMBER");
+    const expectedDept = assignedRole === "BOARD_ADMIN" ? "BOARD" : assignedRole.startsWith("MEDIA") ? "MEDIA" : "DANCE";
+    if (dept?.code !== expectedDept) return NextResponse.json({ error: "Vai trò không phù hợp với ban đã chọn." }, { status: 400 });
     const newRole: RoleAssignment = {
-      id: `ra-${Date.now()}`,
+      id: `ra-${randomUUID()}`,
       user_id: newId,
       role: assignedRole,
       department_id: dept?.id,
@@ -85,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     // Audit log
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "CREATE_MEMBER",
       entity_type: "profiles",
@@ -100,3 +106,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const GET = withApi(handlerGET);
+export const POST = withApi(handlerPOST);

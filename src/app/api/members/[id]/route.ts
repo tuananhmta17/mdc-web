@@ -1,14 +1,18 @@
+import { hashPassword } from "@/lib/security";
+import { visibleDatabase } from "@/lib/visibility";
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionFromRequest, readDb, writeDb } from "@/lib/db";
+import { getCurrentSession, getSessionFromRequest, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { RoleCode, UserStatus } from "@/lib/types";
 
-export async function GET(
+async function handlerGET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = readDb();
+  const db = visibleDatabase(readDb(), getCurrentSession());
   const session = getSessionFromRequest(req, db);
 
   if (!RBAC.canAccessInternalData(session)) {
@@ -30,7 +34,7 @@ export async function GET(
   });
 }
 
-export async function PATCH(
+async function handlerPATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -38,7 +42,7 @@ export async function PATCH(
   const db = readDb();
   const session = getSessionFromRequest(req, db);
 
-  if (!RBAC.canManageMembers(session)) {
+  if (!RBAC.canManageMembers(session) && id !== session.user.id) {
     return NextResponse.json({ error: "Chỉ Ban Chủ nhiệm (Admin) mới có quyền chỉnh sửa tài khoản thành viên." }, { status: 403 });
   }
 
@@ -51,6 +55,9 @@ export async function PATCH(
     const body = await req.json();
     const { status, role, department_code, phone, cohort_class, full_name, email, password } = body;
     const beforeState = { ...member };
+    if (!session.isBoardAdmin && Object.keys(body).some(key => !["full_name", "phone", "cohort_class"].includes(key))) {
+      return NextResponse.json({ error: "Bạn chỉ được cập nhật thông tin cá nhân của mình." }, { status: 403 });
+    }
 
     // Prevent Admin from locking their own account
     if (id === session.user.id && status === "INACTIVE") {
@@ -74,12 +81,13 @@ export async function PATCH(
     if (full_name !== undefined && full_name.trim()) member.full_name = full_name.trim();
     if (phone !== undefined) member.phone = phone.trim();
     if (cohort_class !== undefined) member.cohort_class = cohort_class.trim();
-    if (password !== undefined && password.trim()) member.password = password.trim();
+    if (password !== undefined && password.length) member.password = hashPassword(password);
 
     if (status && ["PENDING", "ACTIVE", "INACTIVE"].includes(status)) {
       member.status = status as UserStatus;
     }
     member.updated_at = new Date().toISOString();
+    if (password || status === "INACTIVE") db.auth_sessions = db.auth_sessions?.filter(s => s.user_id !== id);
 
     // Update department if provided
     if (department_code) {
@@ -90,7 +98,7 @@ export async function PATCH(
           mem.department_id = dept.id;
         } else {
           db.department_memberships.push({
-            id: `dm-${Date.now()}`,
+            id: `dm-${randomUUID()}`,
             user_id: id,
             department_id: dept.id,
             is_primary: true,
@@ -118,7 +126,7 @@ export async function PATCH(
 
       db.role_assignments = db.role_assignments.filter((r) => r.user_id !== id);
       db.role_assignments.push({
-        id: `ra-${Date.now()}`,
+        id: `ra-${randomUUID()}`,
         user_id: id,
         role: role as RoleCode,
         assigned_at: new Date().toISOString(),
@@ -127,7 +135,7 @@ export async function PATCH(
 
     // Record audit log
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "UPDATE_MEMBER",
       entity_type: "profiles",
@@ -144,7 +152,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function handlerDELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -170,6 +178,11 @@ export async function DELETE(
   }
 
   const deletedMember = db.profiles[memberIndex];
+  if (db.media_tasks.some(t => t.assigner_id === id || t.assignee_id === id) || db.dances.some(d => d.leader_id === id) || db.media_task_submissions.some(s => s.submitter_id === id)) {
+    return NextResponse.json({ error: "Thành viên còn phụ trách bài nhảy hoặc nhiệm vụ. Hãy khóa tài khoản hoặc bàn giao trước khi xóa." }, { status: 409 });
+  }
+  db.auth_sessions = db.auth_sessions?.filter(s => s.user_id !== id);
+  db.notifications = db.notifications.filter(n => n.recipient_id !== id);
 
   // Remove profile and all associated data
   db.profiles.splice(memberIndex, 1);
@@ -183,7 +196,7 @@ export async function DELETE(
 
   // Record audit log
   db.audit_logs.unshift({
-    id: `audit-${Date.now()}`,
+    id: `audit-${randomUUID()}`,
     actor_id: session.user.id,
     action: "DELETE_MEMBER",
     entity_type: "profiles",
@@ -199,3 +212,7 @@ export async function DELETE(
     message: `Đã xóa vĩnh viễn tài khoản ${deletedMember.full_name} (${deletedMember.email}).`,
   });
 }
+
+export const GET = withApi(handlerGET);
+export const PATCH = withApi(handlerPATCH);
+export const DELETE = withApi(handlerDELETE);

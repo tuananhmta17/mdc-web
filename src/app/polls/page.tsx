@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { formatVNDateTime } from "@/lib/utils";
 import {
   Vote,
@@ -28,6 +28,9 @@ export default function PollsPage() {
   const [selectedDanceIds, setSelectedDanceIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [busyRound, setBusyRound] = useState("");
+  const [endAt, setEndAt] = useState("");
+  const [hideResults, setHideResults] = useState(false);
 
   const canManage = session?.isBoardAdmin || session?.isDanceHead;
 
@@ -41,7 +44,7 @@ export default function PollsPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/polls", {
+      const res = await apiRequest("/api/polls", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -49,6 +52,8 @@ export default function PollsPage() {
           description,
           scope,
           dance_ids: selectedDanceIds,
+          end_at: endAt ? new Date(`${endAt}:00+07:00`).toISOString() : undefined,
+          result_visibility: hideResults ? "HIDDEN_UNTIL_CLOSED" : "PUBLIC",
         }),
       });
 
@@ -70,9 +75,11 @@ export default function PollsPage() {
   };
 
   const handleVote = async (roundId: string, optionId: string) => {
+    if (busyRound) return;
+    setBusyRound(roundId);
     setActionError("");
     try {
-      const res = await fetch(`/api/polls/${roundId}/vote`, {
+      const res = await apiRequest(`/api/polls/${roundId}/vote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ option_id: optionId }),
@@ -86,7 +93,17 @@ export default function PollsPage() {
       await refresh();
     } catch (err: any) {
       setActionError(err.message);
+    } finally {
+      setBusyRound("");
     }
+  };
+
+  const closeRound = async (id: string, winner?: string) => {
+    if (busyRound) return;
+    setBusyRound(id); setActionError("");
+    try { await apiRequest(`/api/polls/${id}/close`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ winning_dance_id: winner }) }); await refresh(); }
+    catch (err) { setActionError(err instanceof Error ? err.message : "Không thể đóng bình chọn."); }
+    finally { setBusyRound(""); }
   };
 
   const toggleSelectDance = (danceId: string) => {
@@ -153,6 +170,8 @@ export default function PollsPage() {
             const options = data.pollOptions.filter((o) => o.round_id === round.id);
             const votes = data.votes.filter((v) => v.round_id === round.id);
             const totalVotes = votes.length;
+            const showResults = canManage || round.result_visibility === "PUBLIC" || round.status !== "OPEN";
+            const withinWindow = Date.now() >= Date.parse(round.start_at) && Date.now() < Date.parse(round.end_at);
             const myVote = votes.find((v) => v.user_id === session?.user.id);
 
             const isDanceAffiliated =
@@ -200,8 +219,9 @@ export default function PollsPage() {
                   </div>
 
                   <div className="text-left sm:text-right shrink-0 text-xs text-slate-400 space-y-0.5">
-                    <div>Tổng số phiếu: <strong className="text-white font-mono text-sm">{totalVotes}</strong></div>
+                    <div>{showResults ? <>Tổng số phiếu: <strong className="text-white font-mono text-sm">{totalVotes}</strong></> : "Kết quả công bố sau khi đóng bình chọn"}</div>
                     <div className="text-[11px]">Hạn vote: {formatVNDateTime(round.end_at)}</div>
+                    {canManage && round.status === "OPEN" && <button disabled={busyRound === round.id} onClick={() => void closeRound(round.id)} className="text-mdc-red pt-2 font-semibold">Đóng bình chọn</button>}
                   </div>
                 </div>
 
@@ -242,21 +262,21 @@ export default function PollsPage() {
                         {/* Progress Bar & Voting Button */}
                         <div className="space-y-2 pt-2 border-t border-mdc-border">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-400 font-mono">{optionVotes} phiếu</span>
-                            <span className="font-bold text-white font-mono">{percent}%</span>
+                            <span className="text-slate-400 font-mono">{showResults ? `${optionVotes} phiếu` : "Chưa công bố"}</span>
+                            <span className="font-bold text-white font-mono">{showResults ? `${percent}%` : "—"}</span>
                           </div>
 
                           <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-mdc-crimson to-mdc-red transition-all duration-500"
-                              style={{ width: `${percent}%` }}
+                              style={{ width: showResults ? `${percent}%` : "0%" }}
                             />
                           </div>
 
-                          {round.status === "OPEN" && (
+                          {round.status === "OPEN" && withinWindow && (
                             <button
                               onClick={() => handleVote(round.id, option.id)}
-                              disabled={!canUserVote}
+                              disabled={!canUserVote || busyRound === round.id}
                               className={`w-full py-2 rounded-xl text-xs font-bold transition-all active:scale-[0.98] ${
                                 isVotedByMe
                                   ? "bg-mdc-red text-white shadow-glowRed"
@@ -274,6 +294,8 @@ export default function PollsPage() {
                                 : "Bình Chọn Bài Này"}
                             </button>
                           )}
+                          {canManage && round.status === "CLOSED" && <button disabled={busyRound === round.id} onClick={() => void closeRound(round.id, option.dance_id)} className="secondary-button w-full justify-center">Chốt bài này</button>}
+                          {round.winning_dance_id === option.dance_id && <p className="text-xs font-semibold text-mdc-emerald">Tiết mục được chọn</p>}
                         </div>
                       </div>
                     );
@@ -330,7 +352,7 @@ export default function PollsPage() {
                 <label className="block text-slate-300 font-semibold mb-1">Phạm Vi Tham Gia Bỏ Phiếu</label>
                 <select
                   value={scope}
-                  onChange={(e) => setScope(e.target.value as any)}
+                  onChange={(e) => { setScope(e.target.value as any); setSelectedDanceIds([]); }}
                   className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white focus:outline-none focus:border-mdc-red"
                 >
                   <option value="DANCE_ONLY">Chỉ Ban Chuyên Môn (DANCE_ONLY)</option>
@@ -341,7 +363,7 @@ export default function PollsPage() {
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Chọn Các Bài Ứng Viên (Tối thiểu 2 bài) *</label>
                 <div className="max-h-48 overflow-y-auto space-y-1.5 p-2 bg-mdc-card rounded-xl border border-mdc-border">
-                  {data.dances.map((dance) => {
+                  {data.dances.filter(d => scope !== "ALL_CLUB" || d.visibility === "ALL_CLUB").map((dance) => {
                     const isSelected = selectedDanceIds.includes(dance.id);
                     return (
                       <div
@@ -367,6 +389,8 @@ export default function PollsPage() {
                 </div>
               </div>
 
+              <div><label htmlFor="poll-end" className="field-label">Hạn bình chọn (giờ Việt Nam)</label><input id="poll-end" type="datetime-local" value={endAt} onChange={e => setEndAt(e.target.value)} className="field-input" /></div>
+              <label className="flex items-center gap-2 text-slate-300"><input type="checkbox" checked={hideResults} onChange={e => setHideResults(e.target.checked)} />Ẩn kết quả đến khi đóng bình chọn</label>
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-mdc-border">
                 <button
                   type="button"

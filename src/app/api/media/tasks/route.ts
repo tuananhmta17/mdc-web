@@ -1,3 +1,6 @@
+import { visibleDatabase } from "@/lib/visibility";
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
@@ -5,8 +8,8 @@ import { MediaTask, TaskPriority, TaskType } from "@/lib/types";
 import { createNotificationAndOutbox } from "@/lib/notifications";
 import { formatVNDateTime } from "@/lib/utils";
 
-export async function GET() {
-  const db = readDb();
+async function handlerGET() {
+  const db = visibleDatabase(readDb(), getCurrentSession());
   const session = getCurrentSession(db);
 
   if (!RBAC.canAccessInternalData(session)) {
@@ -37,7 +40,7 @@ export async function GET() {
   return NextResponse.json(tasksWithDetails);
 }
 
-export async function POST(req: NextRequest) {
+async function handlerPOST(req: NextRequest) {
   const db = readDb();
   const session = getCurrentSession(db);
 
@@ -55,11 +58,11 @@ export async function POST(req: NextRequest) {
     }
 
     const assignee = db.profiles.find((p) => p.id === assignee_id);
-    if (!assignee) {
+    if (!assignee || assignee.status !== "ACTIVE" || !db.role_assignments.some(r => r.user_id === assignee_id && ["BOARD_ADMIN", "MEDIA_HEAD", "MEDIA_MEMBER"].includes(r.role))) {
       return NextResponse.json({ error: "Assignee profile not found" }, { status: 404 });
     }
 
-    const taskId = `task-${Date.now()}`;
+    const taskId = `task-${randomUUID()}`;
     const newTask: MediaTask = {
       id: taskId,
       title,
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest) {
     });
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "ASSIGN_MEDIA_TASK",
       entity_type: "media_tasks",
@@ -108,3 +111,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const GET = withApi(handlerGET);
+export const POST = withApi(handlerPOST);

@@ -20,7 +20,7 @@ export interface Profile {
   cohort_class?: string; // Khóa / Lớp tại MTA (Học viện Kỹ thuật Quân sự)
   avatar_url?: string;
   status: UserStatus;
-  password?: string; // Mật khẩu đăng nhập (mặc định: 123456)
+  password?: string; // Server-only scrypt hash; never serialized to clients.
   created_at: string;
   updated_at: string;
 }
@@ -262,7 +262,9 @@ export interface EmailOutboxItem {
   recipient_name?: string;
   subject: string;
   body_html: string;
-  status: "PENDING" | "SENT" | "FAILED";
+  status: "PENDING" | "PROCESSING" | "SENT" | "FAILED";
+  claimed_until?: string;
+  claim_token?: string;
   attempts: number;
   next_retry_at?: string;
   last_error?: string;
@@ -284,6 +286,8 @@ export interface AuditLog {
 
 // Full In-Memory / Local JSON Database representation
 export interface DatabaseSchema {
+  auth_sessions?: { token_hash: string; user_id: string; expires_at: string }[];
+  auth_attempts?: { key: string; count: number; reset_at: string }[];
   profiles: Profile[];
   departments: Department[];
   department_memberships: DepartmentMembership[];

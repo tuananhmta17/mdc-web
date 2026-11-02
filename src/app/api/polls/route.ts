@@ -1,11 +1,14 @@
+import { visibleDatabase } from "@/lib/visibility";
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { DancePollOption, DancePollRound } from "@/lib/types";
 import { createNotificationAndOutbox } from "@/lib/notifications";
 
-export async function GET() {
-  const db = readDb();
+async function handlerGET() {
+  const db = visibleDatabase(readDb(), getCurrentSession());
   const session = getCurrentSession(db);
 
   if (!RBAC.canAccessInternalData(session)) {
@@ -13,6 +16,7 @@ export async function GET() {
   }
 
   const roundsWithDetails = db.dance_poll_rounds.map((round) => {
+    const showResults = session.isBoardAdmin || session.isDanceHead || round.result_visibility === "PUBLIC" || round.status !== "OPEN";
     const options = db.dance_poll_options.filter((o) => o.round_id === round.id);
     const optionsWithDances = options.map((opt) => {
       const dance = db.dances.find((d) => d.id === opt.dance_id);
@@ -22,7 +26,7 @@ export async function GET() {
       return {
         ...opt,
         dance,
-        voteCount,
+        voteCount: showResults ? voteCount : null,
       };
     });
 
@@ -36,7 +40,7 @@ export async function GET() {
       ...round,
       options: optionsWithDances,
       userVotedOptionId: userVote?.option_id || null,
-      totalVotes,
+      totalVotes: showResults ? totalVotes : null,
       canVote: RBAC.canVotePoll(session, round),
     };
   });
@@ -44,7 +48,7 @@ export async function GET() {
   return NextResponse.json(roundsWithDetails);
 }
 
-export async function POST(req: NextRequest) {
+async function handlerPOST(req: NextRequest) {
   const db = readDb();
   const session = getCurrentSession(db);
 
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Title and at least 2 candidate dance IDs are required" }, { status: 400 });
     }
 
-    const roundId = `poll-${Date.now()}`;
+    const roundId = `poll-${randomUUID()}`;
     const newRound: DancePollRound = {
       id: roundId,
       title,
@@ -68,7 +72,7 @@ export async function POST(req: NextRequest) {
       scope: scope || "DANCE_ONLY",
       start_at: start_at || new Date().toISOString(),
       end_at: end_at || new Date(Date.now() + 7 * 86400000).toISOString(),
-      result_visibility: "PUBLIC",
+      result_visibility: body.result_visibility || "PUBLIC",
       status: "OPEN",
       created_at: new Date().toISOString(),
     };
@@ -102,13 +106,13 @@ export async function POST(req: NextRequest) {
         bodyHtml: `<p>CLB vừa mở đợt bình chọn: <strong>"${title}"</strong>.</p><p>Hạn chót: <strong>${new Date(newRound.end_at).toLocaleString("vi-VN")}</strong>.</p>`,
         entityType: "dance_poll_rounds",
         entityId: roundId,
-        linkUrl: `/polls/${roundId}`,
+        linkUrl: "/polls",
         idempotencyKey: `poll-opened-${roundId}-${m.id}`,
       });
     }
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "CREATE_POLL_ROUND",
       entity_type: "dance_poll_rounds",
@@ -123,3 +127,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const GET = withApi(handlerGET);
+export const POST = withApi(handlerPOST);

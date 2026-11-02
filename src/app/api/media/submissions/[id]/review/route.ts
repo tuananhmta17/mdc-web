@@ -1,9 +1,11 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { createNotificationAndOutbox } from "@/lib/notifications";
 
-export async function POST(
+async function handlerPOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -29,6 +31,8 @@ export async function POST(
   try {
     const body = await req.json();
     const { review_status, feedback } = body;
+    const latestVersion = Math.max(...db.media_task_submissions.filter(s => s.task_id === task.id).map(s => s.version));
+    if (submission.version !== latestVersion) return NextResponse.json({ error: "Chỉ được duyệt phiên bản mới nhất." }, { status: 409 });
 
     if (!["APPROVED", "REVISION_REQUESTED"].includes(review_status)) {
       return NextResponse.json({ error: "review_status must be 'APPROVED' or 'REVISION_REQUESTED'" }, { status: 400 });
@@ -70,7 +74,7 @@ export async function POST(
     }
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: isApproved ? "APPROVE_SUBMISSION" : "REQUEST_REVISION",
       entity_type: "media_task_submissions",
@@ -85,3 +89,5 @@ export async function POST(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withApi(handlerPOST);
