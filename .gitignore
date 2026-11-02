@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+.DS_Store
+*.pem
+
+# Local env files
+.env*.local
+.env
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
