@@ -21,12 +21,19 @@ Ngày kiểm tra: 03/11/2026 (giờ Việt Nam).
 - TypeScript và `next build` thành công. JavaScript tải lần đầu khoảng 103–114 kB tùy trang.
 - npm audit sau cập nhật: 0 lỗ hổng.
 - Kiểm tra bằng trình duyệt: đăng nhập, dashboard, bài nhảy, bình chọn, lịch rảnh, lịch tập, truyền thông, thành viên, điều hành, hồ sơ; không thấy lỗi console trong các màn hình đã kiểm tra. Lưu hồ sơ thành công trên giao diện di động.
-- Supabase thật và gửi email thật chưa được xác minh vì chưa có phiên Vercel hợp lệ. Các kiểm tra giả lập không thay thế bước kiểm tra dịch vụ thật.
+- Supabase thật đã được kiểm tra qua kết nối quản trị: project `wzwtnsfwbmbhqsdqgyjd` hoạt động, ban đầu chưa có bảng public hoặc tài khoản Auth. Log Data API xác nhận yêu cầu tới bảng snapshot trả 404.
+- Đã áp dụng migration `mdc_production_storage` trên Supabase: tạo `app_state_snapshots`, thêm `revision`, bật RLS, thu hồi quyền `anon`/`authenticated`, cấp SELECT/INSERT/UPDATE cho `service_role` và yêu cầu PostgREST tải lại schema.
+- Truy vấn sau migration xác nhận đủ bốn cột, RLS bật, hai vai trò public không đọc được dữ liệu, máy chủ có quyền đọc/ghi; bảng chưa có snapshot để ghi đè. Advisor chỉ báo INFO do bảng chỉ cho máy chủ truy cập không có policy public.
+- Gửi email thật và đăng nhập bằng tài khoản quản trị thật vẫn chưa được xác minh.
 
-## Chưa triển khai production
+## Đã có mã mới trên production; chưa hoàn tất khởi tạo
 
-Website đã xác minh: https://mdc-web-delta.vercel.app/ . Repository đang liên kết dự án Vercel `s-46da/mdc-web`. Token cũ trong checkout bị Vercel từ chối 403; trình duyệt hiện yêu cầu đăng nhập.
+Website đã xác minh: https://mdc-web-delta.vercel.app/ . Giao diện mới đã xuất hiện trên tên miền thật. Repository liên kết dự án Vercel `s-46da/mdc-web` (`prj_Qws3x8LATdJJ1aFiGmOJQGeBOUxg`). Nhánh `codex/production-1.1`, commit `efc266d`, đã được đẩy lên GitHub và có draft PR #1; Vercel Preview báo build thành công. Chưa xác minh nguồn của lần promote production; `main` trên GitHub vẫn ở commit cũ lúc kiểm tra.
 
-Người dùng xác nhận đã có Supabase trên dự án. Chưa đọc được cấu hình production để xác minh migration 002, URL, email và cron. Kiểm tra cấu hình local báo bốn nhóm biến chưa được cung cấp; điều này không chứng minh chúng thiếu trên Vercel.
+Sau khi người dùng duyệt quyền team Vercel, đã đọc được tên các biến môi trường (không hiển thị giá trị khóa). Các biến Supabase có mặt ở production/preview; chưa có `APP_URL`, `CRON_SECRET`, `MDC_ADMIN_EMAIL`, `MDC_ADMIN_NAME`, `MDC_ADMIN_PASSWORD` hoặc các biến nhà cung cấp email trong danh sách trả về.
 
-Trước khi chuyển bản này lên production cần sao lưu dữ liệu hiện có, áp dụng migration 002, xử lý mật khẩu văn bản của bản cũ, xác minh cấu hình thật và sau đó triển khai đúng dự án. Chi tiết tại `DEPLOY_GUIDE.md`. Bản online cũ còn lỗi xác thực và trả mật khẩu trong API; mã nguồn mới đã sửa, nhưng sửa chữa chưa có hiệu lực trên tên miền cho tới khi triển khai thành công.
+Sau migration, `/api/state` trên production đã đổi từ lỗi đọc Supabase sang HTTP 503: `Chưa khởi tạo quản trị viên. Cần cấu hình MDC_ADMIN_EMAIL và MDC_ADMIN_PASSWORD (ít nhất 12 ký tự).` Không có phiên hoặc mật khẩu bị trả về trong phản hồi kiểm tra này.
+
+Việc còn lại: người dùng xác định email/họ tên quản trị; đặt mật khẩu riêng trực tiếp trong cấu hình bảo mật; cấu hình URL, cron và nhà cung cấp email thật; redeploy đúng dự án; đăng nhập lần đầu và xác minh snapshot được lưu; thu hồi biến mật khẩu khởi tạo sau khi tạo tài khoản; kiểm tra luồng đăng nhập/đăng xuất và email thật. Không đưa dữ liệu mẫu vào cloud.
+
+Ở lần tiếp tục gần nhất, các công cụ Supabase/Vercel không còn trong phiên và kết quả tìm plugin báo chưa cài; trình duyệt báo `Local browser use is disabled in Work settings`. Token CLI cũ đã hết hiệu lực và máy chưa có file xác thực CLI mới. Cần khôi phục một đường truy cập quản trị đã được cấp quyền để hoàn thành các bước còn lại. Không cần duyệt lại phạm vi triển khai đã được người dùng cho phép.
