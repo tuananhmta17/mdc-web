@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAppState } from "@/lib/state-context";
-import { formatVNDateTime, formatVNTime, getDayNameVN } from "@/lib/utils";
+import { apiRequest, useAppState } from "@/lib/state-context";
+import { formatVNDateTime, formatVNTime, getDayNameVN, vnInputToISO } from "@/lib/utils";
 import {
   CalendarCheck2,
   Plus,
@@ -44,14 +44,14 @@ export default function PracticePage() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/practices", {
+      const res = await apiRequest("/api/practices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           dance_id: newDanceId,
           title,
-          start_at: new Date(startAt).toISOString(),
-          end_at: new Date(endAt).toISOString(),
+          start_at: vnInputToISO(startAt),
+          end_at: vnInputToISO(endAt),
           location,
           notes,
         }),
@@ -75,7 +75,7 @@ export default function PracticePage() {
 
   const handleRsvp = async (sessionId: string, response: RSVPResponse) => {
     try {
-      await fetch(`/api/practices/${sessionId}/rsvp`, {
+      await apiRequest(`/api/practices/${sessionId}/rsvp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ response }),
@@ -88,7 +88,7 @@ export default function PracticePage() {
 
   const handleMarkAttendance = async (sessionId: string, userId: string, status: AttendanceStatus) => {
     try {
-      await fetch(`/api/practices/${sessionId}/attendance`, {
+      await apiRequest(`/api/practices/${sessionId}/attendance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, status }),
@@ -106,7 +106,7 @@ export default function PracticePage() {
     }
 
     try {
-      await fetch(`/api/practices/${sessionId}`, {
+      await apiRequest(`/api/practices/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

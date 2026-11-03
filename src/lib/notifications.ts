@@ -1,6 +1,10 @@
 import { DatabaseSchema, EmailOutboxItem, InAppNotification, Profile } from "./types";
 import { formatVNDateTime } from "./utils";
 import { sendEmail } from "./mailer";
+import { randomUUID } from "node:crypto";
+import { readDb, writeDb, withDatabase } from "./db";
+
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
 export function createNotificationAndOutbox(
   db: DatabaseSchema,
@@ -16,6 +20,11 @@ export function createNotificationAndOutbox(
     idempotencyKey: string;
   }
 ): { notification: InAppNotification; outboxItem?: EmailOutboxItem } {
+  const existing = db.email_outbox.find(e => e.idempotency_key === params.idempotencyKey);
+  if (existing) {
+    const notification = db.notifications.find(n => n.id === existing.notification_id);
+    if (notification) return { notification, outboxItem: existing };
+  }
   // 1. Create In-App notification
   const notifId = `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const notification: InAppNotification = {
@@ -45,7 +54,7 @@ export function createNotificationAndOutbox(
   const brandedHtml = wrapEmailWithBrandLayout({
     recipientName: params.recipient.full_name,
     subject: params.subject,
-    contentHtml: params.bodyHtml,
+    contentHtml: `<p style="white-space:pre-wrap">${escapeHtml(params.bodyText)}</p>`,
     actionUrl: params.linkUrl,
   });
 
@@ -78,7 +87,7 @@ function wrapEmailWithBrandLayout(options: {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${options.subject}</title>
+  <title>${escapeHtml(options.subject)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #111118; margin: 0; padding: 24px; color: #F8FAFC; }
     .email-card { max-width: 600px; margin: 0 auto; background-color: #1E1E2B; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
@@ -98,12 +107,12 @@ function wrapEmailWithBrandLayout(options: {
       <div class="email-logo-sub">CLB Vũ Đạo — Học viện Kỹ thuật Quân sự</div>
     </div>
     <div class="email-body">
-      <div class="greeting">Xin chào ${options.recipientName},</div>
+      <div class="greeting">Xin chào ${escapeHtml(options.recipientName)},</div>
       ${options.contentHtml}
       ${
         options.actionUrl
           ? `<div style="text-align: center; margin-top: 28px;">
-               <a href="http://localhost:3000${options.actionUrl}" class="cta-button">Xem Chi Tiết Trên Hệ Thống</a>
+               <a href="${escapeHtml(new URL(options.actionUrl, process.env.APP_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000")).href)}" class="cta-button">Xem Chi Tiết Trên Hệ Thống</a>
              </div>`
           : ""
       }
@@ -119,46 +128,17 @@ function wrapEmailWithBrandLayout(options: {
 }
 
 // Scheduled job to process email outbox and check 48h/24h due tasks
-export async function processEmailOutboxWorker(db: DatabaseSchema): Promise<{
-  sentCount: number;
-  remindersTriggered: number;
-}> {
-  let sentCount = 0;
+export function queueDueReminders(db: DatabaseSchema): number {
   const now = new Date();
-
-  // 1. Process pending emails in outbox
-  for (const item of db.email_outbox) {
-    if (item.status === "PENDING" || (item.status === "FAILED" && item.attempts < 3)) {
-      item.attempts += 1;
-      const sendRes = await sendEmail({
-        to: item.recipient_email,
-        toName: item.recipient_name,
-        subject: item.subject,
-        html: item.body_html,
-      });
-
-      if (sendRes.success) {
-        item.status = "SENT";
-        item.sent_at = now.toISOString();
-        sentCount++;
-      } else {
-        item.status = "FAILED";
-        item.last_error = sendRes.error;
-        // Exponential backoff retry time
-        item.next_retry_at = new Date(now.getTime() + Math.pow(2, item.attempts) * 60000).toISOString();
-      }
-    }
-  }
-
+  const beforeCount = db.notifications.length;
   // 2. Scan media tasks due in 48h / 24h or overdue and trigger reminders
-  let remindersTriggered = 0;
   for (const task of db.media_tasks) {
     if (task.status === "APPROVED") continue;
 
     const dueDate = new Date(task.due_at);
     const diffHours = (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60);
     const assignee = db.profiles.find((p) => p.id === task.assignee_id);
-    if (!assignee) continue;
+    if (!assignee || assignee.status !== "ACTIVE") continue;
 
     // Check overdue
     if (diffHours < 0) {
@@ -174,7 +154,6 @@ export async function processEmailOutboxWorker(db: DatabaseSchema): Promise<{
         linkUrl: `/media/tasks/${task.id}`,
         idempotencyKey,
       });
-      if (result.outboxItem?.status === "PENDING") remindersTriggered++;
     }
     // Check 24h due
     else if (diffHours <= 24 && diffHours > 0) {
@@ -190,9 +169,67 @@ export async function processEmailOutboxWorker(db: DatabaseSchema): Promise<{
         linkUrl: `/media/tasks/${task.id}`,
         idempotencyKey,
       });
-      if (result.outboxItem?.status === "PENDING") remindersTriggered++;
+    } else if (diffHours > 24 && diffHours <= 48) {
+      createNotificationAndOutbox(db, { recipient: assignee, type: "MEDIA_TASK_DUE_SOON", subject: `[NHẮC HẠN 48H] ${task.title}`, bodyText: `Nhiệm vụ "${task.title}" sẽ đến hạn trong 48 giờ (${formatVNDateTime(task.due_at)}).`, bodyHtml: "", entityType: "media_tasks", entityId: task.id, linkUrl: `/media/tasks/${task.id}`, idempotencyKey: `reminder-due48h-${task.id}-${task.due_at}` });
     }
   }
 
+  return db.notifications.length - beforeCount;
+}
+
+// Claims are durable before delivery; disjoint batches allow overlapping cron invocations.
+export async function processEmailOutboxWorker(): Promise<{ sentCount: number; remindersTriggered: number }> {
+  const deadline = Date.now() + 40000;
+  let sentCount = 0;
+  let remindersTriggered = 0;
+  let processed = 0;
+  while (processed < 50 && Date.now() < deadline) {
+    const claimToken = randomUUID();
+    const batch = await withDatabase(async () => {
+      const db = readDb();
+      const before = db.email_outbox.length;
+      if (processed === 0) queueDueReminders(db);
+      const added = db.email_outbox.length - before;
+      const now = Date.now();
+      for (const item of db.email_outbox) {
+        if (item.status === "PROCESSING" && Date.parse(item.claimed_until || "") <= now) {
+          item.status = "FAILED"; item.attempts = 3;
+          item.last_error = "Gửi thư bị gián đoạn; cần kiểm tra nhà cung cấp trước khi gửi lại.";
+        }
+      }
+      const eligible = db.email_outbox.filter(item =>
+        (item.status === "PENDING" || item.status === "FAILED") && item.attempts < 3 &&
+        (!item.next_retry_at || Date.parse(item.next_retry_at) <= now)
+      ).slice(0, 5);
+      for (const item of eligible) {
+        item.status = "PROCESSING"; item.attempts++; item.claim_token = claimToken;
+        item.claimed_until = new Date(now + 5 * 60000).toISOString();
+      }
+      writeDb(db);
+      return { items: structuredClone(eligible), added };
+    });
+    remindersTriggered += batch.added;
+    if (!batch.items.length) break;
+    processed += batch.items.length;
+    const results = await Promise.all(batch.items.map(async item => ({ item, result: await sendEmail({ to: item.recipient_email, toName: item.recipient_name, subject: item.subject, html: item.body_html, idempotencyKey: item.idempotency_key }) })));
+    for (let retry = 0; retry < 3; retry++) {
+      try {
+        await withDatabase(async () => {
+          const db = readDb();
+          for (const { item, result } of results) {
+            const current = db.email_outbox.find(e => e.id === item.id && e.claim_token === claimToken);
+            if (!current) continue;
+            current.status = result.success ? "SENT" : "FAILED";
+            if (result.success) { current.sent_at = new Date().toISOString(); delete current.last_error; delete current.next_retry_at; }
+            else { current.last_error = result.error; current.next_retry_at = new Date(Date.now() + 2 ** current.attempts * 60000).toISOString(); }
+            delete current.claim_token; delete current.claimed_until;
+          }
+          writeDb(db);
+        });
+        break;
+      } catch (error) { if (retry === 2) throw error; }
+    }
+    sentCount += results.filter(r => r.result.success).length;
+  }
   return { sentCount, remindersTriggered };
 }

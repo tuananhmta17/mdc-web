@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { formatVNDate, formatVNDateTime, getDayNameVN } from "@/lib/utils";
 import {
   Flame,
@@ -79,7 +79,7 @@ export default function DanceDetailPage({
     setActionError("");
     setActionSuccess("");
     try {
-      const res = await fetch(`/api/dances/${id}/register`, {
+      const res = await apiRequest(`/api/dances/${id}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: regNote, cancel }),
@@ -98,16 +98,16 @@ export default function DanceDetailPage({
   };
 
   const handleApproveRegistration = async (regId: string, status: string) => {
-    await fetch(`/api/dances/${id}/register`, {
+    try { await apiRequest(`/api/dances/${id}/register`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ registrationId: regId, status }),
     });
-    await refresh();
+    await refresh(); } catch (err) { setActionError(err instanceof Error ? err.message : "Không thể lưu thay đổi."); }
   };
 
   const handleUpdateStatus = async (newStatus: string) => {
-    await fetch(`/api/dances/${id}`, {
+    await apiRequest(`/api/dances/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: newStatus }),

@@ -1,3 +1,6 @@
+import { visibleDatabase } from "@/lib/visibility";
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
@@ -5,8 +8,8 @@ import { PracticeSession } from "@/lib/types";
 import { createNotificationAndOutbox } from "@/lib/notifications";
 import { formatVNDateTime } from "@/lib/utils";
 
-export async function GET() {
-  const db = readDb();
+async function handlerGET() {
+  const db = visibleDatabase(readDb(), getCurrentSession());
   const session = getCurrentSession(db);
 
   if (!RBAC.canAccessInternalData(session)) {
@@ -32,7 +35,7 @@ export async function GET() {
   return NextResponse.json(sessionsWithDetails);
 }
 
-export async function POST(req: NextRequest) {
+async function handlerPOST(req: NextRequest) {
   const db = readDb();
   const session = getCurrentSession(db);
 
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Title, start_at, end_at, and location are required" }, { status: 400 });
     }
 
-    const sessionId = `prac-${Date.now()}`;
+    const sessionId = `prac-${randomUUID()}`;
     const newSession: PracticeSession = {
       id: sessionId,
       dance_id,
@@ -97,7 +100,7 @@ export async function POST(req: NextRequest) {
 
       // Default PENDING RSVP
       db.practice_rsvps.push({
-        id: `rsvp-${Date.now()}-${uid}`,
+        id: `rsvp-${randomUUID()}-${uid}`,
         session_id: sessionId,
         user_id: uid,
         response: uid === session.user.id ? "ATTENDING" : "PENDING",
@@ -106,7 +109,7 @@ export async function POST(req: NextRequest) {
     }
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "CREATE_PRACTICE_SESSION",
       entity_type: "practice_sessions",
@@ -121,3 +124,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const GET = withApi(handlerGET);
+export const POST = withApi(handlerPOST);

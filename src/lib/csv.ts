@@ -32,8 +32,8 @@ export function exportMembersToCsv(db: DatabaseSchema): string {
     return [
       p.id,
       escapeCsv(p.full_name),
-      p.email,
-      p.phone || "",
+      escapeCsv(p.email),
+      escapeCsv(p.phone || ""),
       escapeCsv(p.cohort_class || ""),
       escapeCsv(dept?.name || "Chưa phân ban"),
       escapeCsv(roles),
@@ -93,7 +93,7 @@ export function exportPollResultsToCsv(
   return (
     UTF8_BOM +
     [
-      `"Đợt bình chọn: ${round.title}"`,
+      escapeCsv(`Đợt bình chọn: ${round.title}`),
       `"Tổng số phiếu: ${totalVotes}"`,
       "",
       headers.join(","),
@@ -176,7 +176,7 @@ export function exportMediaTasksToCsv(db: DatabaseSchema): string {
       `${t.progress_percent}%`,
       t.status,
       subs.length.toString(),
-      latestSub ? latestSub.url : "",
+      escapeCsv(latestSub ? latestSub.url : ""),
     ];
   });
 
@@ -186,7 +186,8 @@ export function exportMediaTasksToCsv(db: DatabaseSchema): string {
   );
 }
 
-function escapeCsv(val: string): string {
+export function escapeCsv(val: string): string {
+  if (/^[\s]*[=+@\-\t\r]/.test(val)) val = "'" + val;
   if (val.includes(",") || val.includes('"') || val.includes("\n")) {
     return `"${val.replace(/"/g, '""')}"`;
   }

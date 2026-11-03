@@ -1,10 +1,12 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { Announcement } from "@/lib/types";
 import { createNotificationAndOutbox } from "@/lib/notifications";
 
-export async function POST(req: NextRequest) {
+async function handlerPOST(req: NextRequest) {
   const db = readDb();
   const session = getCurrentSession(db);
 
@@ -20,7 +22,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Title and body are required" }, { status: 400 });
     }
 
-    const ancId = `anc-${Date.now()}`;
+    const ancId = `anc-${randomUUID()}`;
     const newAnc: Announcement = {
       id: ancId,
       title,
@@ -35,7 +37,7 @@ export async function POST(req: NextRequest) {
     // Notify audience
     const targets = db.profiles.filter((p) => {
       if (p.status !== "ACTIVE") return false;
-      if (audience === "ALL_CLUB") return true;
+      if (!audience || audience === "ALL_CLUB") return true;
       const mem = db.department_memberships.find((m) => m.user_id === p.id && m.is_primary);
       const dept = db.departments.find((d) => d.id === mem?.department_id);
       if (audience === "DANCE_ONLY" && dept?.code === "DANCE") return true;
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
     }
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "CREATE_ANNOUNCEMENT",
       entity_type: "announcements",
@@ -74,3 +76,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withApi(handlerPOST);

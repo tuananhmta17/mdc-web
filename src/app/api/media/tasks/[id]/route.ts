@@ -1,14 +1,17 @@
+import { visibleDatabase } from "@/lib/visibility";
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { TaskPriority, TaskStatus } from "@/lib/types";
 
-export async function GET(
+async function handlerGET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = readDb();
+  const db = visibleDatabase(readDb(), getCurrentSession());
   const session = getCurrentSession(db);
 
   if (!RBAC.canAccessInternalData(session)) {
@@ -38,7 +41,7 @@ export async function GET(
   });
 }
 
-export async function PATCH(
+async function handlerPATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -61,6 +64,8 @@ export async function PATCH(
   try {
     const body = await req.json();
     const { progress_percent, status, title, description, priority, due_at } = body;
+    if (!isManager && Object.keys(body).some(key => key !== "progress_percent")) return NextResponse.json({ error: "Thành viên chỉ được cập nhật tiến độ; nộp sản phẩm để chờ duyệt." }, { status: 403 });
+    if (status === "APPROVED" && !db.media_task_submissions.some(s => s.task_id === id && s.review_status === "APPROVED")) return NextResponse.json({ error: "Cần duyệt sản phẩm trước khi hoàn tất nhiệm vụ." }, { status: 400 });
     const beforeState = { ...task };
 
     if (progress_percent !== undefined) {
@@ -81,7 +86,7 @@ export async function PATCH(
     task.updated_at = new Date().toISOString();
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "UPDATE_MEDIA_TASK",
       entity_type: "media_tasks",
@@ -97,3 +102,6 @@ export async function PATCH(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const GET = withApi(handlerGET);
+export const PATCH = withApi(handlerPATCH);

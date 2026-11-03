@@ -308,5 +308,7 @@ CREATE TABLE IF NOT EXISTS app_state_snapshots (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE app_state_snapshots ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow snapshot sync" ON app_state_snapshots FOR ALL USING (true);
+-- Only server credentials may access the complete application state.
+REVOKE ALL ON app_state_snapshots FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON app_state_snapshots TO service_role;
 

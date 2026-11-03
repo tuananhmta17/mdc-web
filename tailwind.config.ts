@@ -11,14 +11,14 @@ const config: Config = {
     extend: {
       colors: {
         mdc: {
-          bg: "#111118",
-          surface: "#181824",
-          card: "#1E1E2D",
-          cardHover: "#27273A",
+          bg: "#101114",
+          surface: "#181a1e",
+          card: "#202227",
+          cardHover: "#292c32",
           border: "rgba(255, 255, 255, 0.08)",
           borderLight: "rgba(255, 255, 255, 0.16)",
-          red: "#D9381E",
-          redDark: "#B82E17",
+          red: "#ec6754",
+          redDark: "#d65645",
           crimson: "#6B1D14",
           crimsonLight: "#8B261A",
           cyan: "#0EA5E9",
@@ -36,7 +36,7 @@ const config: Config = {
       boxShadow: {
         glowRed: "0 0 30px -5px rgba(217, 56, 30, 0.3)",
         glowCrimson: "0 0 30px -5px rgba(107, 29, 20, 0.4)",
-        card: "0 4px 20px -2px rgba(0, 0, 0, 0.5)",
+        card: "0 4px 24px -8px rgba(0, 0, 0, 0.15)",
       },
     },
   },

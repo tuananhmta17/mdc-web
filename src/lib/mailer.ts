@@ -5,11 +5,12 @@ export interface SendMailOptions {
   toName?: string;
   subject: string;
   html: string;
+  idempotencyKey?: string;
 }
 
 export interface SendMailResult {
   success: boolean;
-  provider: "gmail_smtp" | "resend" | "local_simulated";
+  provider: "gmail_smtp" | "resend" | "unconfigured";
   messageId?: string;
   error?: string;
 }
@@ -24,6 +25,9 @@ export async function sendEmail(options: SendMailOptions): Promise<SendMailResul
     try {
       const transporter = nodemailer.createTransport({
         service: "gmail",
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
         auth: {
           user: gmailUser,
           pass: gmailPass,
@@ -32,7 +36,7 @@ export async function sendEmail(options: SendMailOptions): Promise<SendMailResul
 
       const info = await transporter.sendMail({
         from: `"MTA Dance Crew" <${gmailUser}>`,
-        to: options.toName ? `"${options.toName}" <${options.to}>` : options.to,
+        to: { name: options.toName || "", address: options.to },
         subject: options.subject,
         html: options.html,
       });
@@ -61,6 +65,7 @@ export async function sendEmail(options: SendMailOptions): Promise<SendMailResul
         headers: {
           Authorization: `Bearer ${resendApiKey}`,
           "Content-Type": "application/json",
+          ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
         },
         body: JSON.stringify({
           from: fromEmail,
@@ -68,6 +73,7 @@ export async function sendEmail(options: SendMailOptions): Promise<SendMailResul
           subject: options.subject,
           html: options.html,
         }),
+        signal: AbortSignal.timeout(15000),
       });
 
       const json = await res.json();
@@ -92,8 +98,8 @@ export async function sendEmail(options: SendMailOptions): Promise<SendMailResul
 
   // 3. Local simulated mode (previewable in Notifications tab)
   return {
-    success: true,
-    provider: "local_simulated",
-    messageId: `sim-${Date.now()}`,
+    success: false,
+    provider: "unconfigured",
+    error: "Chưa cấu hình nhà cung cấp email. Thư chưa được gửi.",
   };
 }

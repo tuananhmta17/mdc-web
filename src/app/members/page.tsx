@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { formatVNDateTime } from "@/lib/utils";
 import {
   Users,
@@ -38,7 +38,7 @@ export default function MembersPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createEmail, setCreateEmail] = useState("");
   const [createName, setCreateName] = useState("");
-  const [createPassword, setCreatePassword] = useState("123456");
+  const [createPassword, setCreatePassword] = useState("");
   const [createPhone, setCreatePhone] = useState("");
   const [createClass, setCreateClass] = useState("");
   const [createDept, setCreateDept] = useState<DepartmentCode>("DANCE");
@@ -121,7 +121,7 @@ export default function MembersPage() {
       setShowCreateModal(false);
       setCreateEmail("");
       setCreateName("");
-      setCreatePassword("123456");
+      setCreatePassword("");
       setCreatePhone("");
       setCreateClass("");
     } else {
@@ -148,7 +148,7 @@ export default function MembersPage() {
       status: editStatus,
     };
     if (editPassword && editPassword.trim()) {
-      updates.password = editPassword.trim();
+      updates.password = editPassword;
     }
 
     const res = await updateMember(editingUserId, updates);
@@ -522,8 +522,11 @@ export default function MembersPage() {
                   <input
                     type="text"
                     value={createPassword}
+                    required
+                    minLength={12}
+                    maxLength={128}
                     onChange={(e) => setCreatePassword(e.target.value)}
-                    placeholder="Mặc định: 123456"
+                    placeholder="Tối thiểu 12 ký tự"
                     className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-mdc-red font-mono"
                   />
                 </div>
@@ -694,6 +697,8 @@ export default function MembersPage() {
                     type="text"
                     placeholder="Để trống nếu không đổi..."
                     value={editPassword}
+                    minLength={12}
+                    maxLength={128}
                     onChange={(e) => setEditPassword(e.target.value)}
                     className="w-full bg-mdc-card border border-mdc-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-mdc-red font-mono"
                   />

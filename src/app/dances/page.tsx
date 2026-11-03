@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { formatVNDate } from "@/lib/utils";
 import {
   Flame,
@@ -46,7 +46,7 @@ export default function DancesPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/dances", {
+      const res = await apiRequest("/api/dances", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

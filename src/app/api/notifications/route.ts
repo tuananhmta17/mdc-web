@@ -1,7 +1,9 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 
-export async function PATCH(req: NextRequest) {
+async function handlerPATCH(req: NextRequest) {
   const db = readDb();
   const session = getCurrentSession(db);
 
@@ -23,7 +25,7 @@ export async function PATCH(req: NextRequest) {
       );
       if (n) {
         n.read_at = now;
-      }
+      } else return NextResponse.json({ error: "Không tìm thấy thông báo." }, { status: 404 });
     }
 
     writeDb(db);
@@ -32,3 +34,5 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const PATCH = withApi(handlerPATCH);

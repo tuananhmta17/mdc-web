@@ -1,339 +1,77 @@
 "use client";
-
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import {
-  Announcement,
-  AuditLog,
-  CurrentUserSession,
-  Dance,
-  DancePollOption,
-  DancePollRound,
-  DanceRegistration,
-  DanceVote,
-  Department,
-  DepartmentMembership,
-  EmailOutboxItem,
-  InAppNotification,
-  MediaTask,
-  MediaTaskSubmission,
-  PracticeAttendance,
-  PracticeRSVP,
-  PracticeSession,
-  Profile,
-  RoleAssignment,
-} from "./types";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Announcement, AuditLog, CurrentUserSession, Dance, DancePollOption, DancePollRound, DanceRegistration, DanceVote, Department, DepartmentMembership, EmailOutboxItem, InAppNotification, MediaTask, MediaTaskSubmission, PracticeAttendance, PracticeRSVP, PracticeSession, Profile, RoleAssignment } from "./types";
 
 interface StateData {
-  session: CurrentUserSession | null;
-  isPendingApproval: boolean;
-  departments: Department[];
-  departmentMemberships: DepartmentMembership[];
-  roleAssignments: RoleAssignment[];
-  profiles: Profile[];
-  dances: Dance[];
-  pollRounds: DancePollRound[];
-  pollOptions: DancePollOption[];
-  votes: DanceVote[];
-  registrations: DanceRegistration[];
-  practiceSessions: PracticeSession[];
-  practiceRsvps: PracticeRSVP[];
-  practiceAttendance: PracticeAttendance[];
-  mediaTasks: MediaTask[];
-  mediaSubmissions: MediaTaskSubmission[];
-  announcements: Announcement[];
-  notifications: InAppNotification[];
-  outbox: EmailOutboxItem[];
-  auditLogs: AuditLog[];
+  session: CurrentUserSession | null; isPendingApproval: boolean;
+  departments: Department[]; departmentMemberships: DepartmentMembership[]; roleAssignments: RoleAssignment[];
+  profiles: Profile[]; dances: Dance[]; pollRounds: DancePollRound[]; pollOptions: DancePollOption[];
+  votes: DanceVote[]; registrations: DanceRegistration[]; practiceSessions: PracticeSession[];
+  practiceRsvps: PracticeRSVP[]; practiceAttendance: PracticeAttendance[]; mediaTasks: MediaTask[];
+  mediaSubmissions: MediaTaskSubmission[]; announcements: Announcement[]; notifications: InAppNotification[];
+  outbox: EmailOutboxItem[]; auditLogs: AuditLog[];
 }
-
+const defaultData: StateData = { session: null, isPendingApproval: false, departments: [], departmentMemberships: [], roleAssignments: [], profiles: [], dances: [], pollRounds: [], pollOptions: [], votes: [], registrations: [], practiceSessions: [], practiceRsvps: [], practiceAttendance: [], mediaTasks: [], mediaSubmissions: [], announcements: [], notifications: [], outbox: [], auditLogs: [] };
+type Result = { success: boolean; error?: string };
 interface StateContextType {
-  data: StateData;
-  loading: boolean;
-  refresh: () => Promise<void>;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  loginQuick: (userId: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => Promise<void>;
-  switchUser: (userId: string) => Promise<void>;
-  createMember: (memberData: any) => Promise<{ success: boolean; error?: string }>;
-  updateMember: (id: string, updates: any) => Promise<{ success: boolean; error?: string }>;
-  deleteMember: (id: string) => Promise<{ success: boolean; error?: string }>;
-  simulateExternalLogin: (email: string, name: string) => Promise<void>;
-  markNotificationRead: (id?: string, all?: boolean) => Promise<void>;
-  runEmailWorker: () => Promise<void>;
-  resetToSampleData: () => Promise<void>;
+  data: StateData; loading: boolean; error: string; refresh: () => Promise<void>;
+  login: (email: string, password: string) => Promise<Result>; logout: () => Promise<void>;
+  createMember: (body: Record<string, unknown>) => Promise<Result>;
+  updateMember: (id: string, body: Record<string, unknown>) => Promise<Result>;
+  deleteMember: (id: string) => Promise<Result>;
+  markNotificationRead: (id?: string, all?: boolean) => Promise<void>; runEmailWorker: () => Promise<void>;
 }
-
-const defaultData: StateData = {
-  session: null,
-  isPendingApproval: false,
-  departments: [],
-  departmentMemberships: [],
-  roleAssignments: [],
-  profiles: [],
-  dances: [],
-  pollRounds: [],
-  pollOptions: [],
-  votes: [],
-  registrations: [],
-  practiceSessions: [],
-  practiceRsvps: [],
-  practiceAttendance: [],
-  mediaTasks: [],
-  mediaSubmissions: [],
-  announcements: [],
-  notifications: [],
-  outbox: [],
-  auditLogs: [],
-};
-
-const StateContext = createContext<StateContextType>({
-  data: defaultData,
-  loading: true,
-  refresh: async () => {},
-  login: async () => ({ success: false }),
-  loginQuick: async () => ({ success: false }),
-  logout: async () => {},
-  switchUser: async () => {},
-  createMember: async () => ({ success: false }),
-  updateMember: async () => ({ success: false }),
-  deleteMember: async () => ({ success: false }),
-  simulateExternalLogin: async () => {},
-  markNotificationRead: async () => {},
-  runEmailWorker: async () => {},
-  resetToSampleData: async () => {},
-});
-
+const StateContext = createContext<StateContextType | null>(null);
+export async function apiRequest(url: string, options?: RequestInit): Promise<Response> {
+  const res = await fetch(url, { ...options, cache: "no-store" });
+  if (!res.ok) {
+    const body = await res.clone().json().catch(() => ({}));
+    const message = body.error || "Không thể hoàn tất yêu cầu.";
+    window.dispatchEvent(new CustomEvent("mdc-error", { detail: message }));
+    throw new Error(message);
+  }
+  return res;
+}
 export function StateProvider({ children }: { children: React.ReactNode }) {
-  const [data, setData] = useState<StateData>(defaultData);
+  const [data, setData] = useState(defaultData);
   const [loading, setLoading] = useState(true);
-
+  const [error, setError] = useState("");
+  const sequence = useRef(0);
   const refresh = useCallback(async () => {
+    const current = ++sequence.current;
     try {
-      const storedUid = typeof window !== "undefined" ? localStorage.getItem("mdc_uid") : null;
-      const headers: Record<string, string> = {};
-      if (storedUid) {
-        headers["x-mdc-uid"] = storedUid;
-      }
-
-      const res = await fetch("/api/state", { headers });
-      if (res.ok) {
-        const json = await res.json();
-        setData({
-          session: json.session,
-          isPendingApproval: json.isPendingApproval,
-          departments: json.departments || [],
-          departmentMemberships: json.departmentMemberships || [],
-          roleAssignments: json.roleAssignments || [],
-          profiles: json.profiles || [],
-          dances: json.dances || [],
-          pollRounds: json.pollRounds || [],
-          pollOptions: json.pollOptions || [],
-          votes: json.votes || [],
-          registrations: json.registrations || [],
-          practiceSessions: json.practiceSessions || [],
-          practiceRsvps: json.practiceRsvps || [],
-          practiceAttendance: json.practiceAttendance || [],
-          mediaTasks: json.mediaTasks || [],
-          mediaSubmissions: json.mediaSubmissions || [],
-          announcements: json.announcements || [],
-          notifications: json.notifications || [],
-          outbox: json.outbox || [],
-          auditLogs: json.auditLogs || [],
-        });
-      }
-    } catch (err) {
-      console.error("Failed to fetch state:", err);
-    } finally {
-      setLoading(false);
-    }
+      const res = await fetch("/api/state", { cache: "no-store" });
+      if (current !== sequence.current) return;
+      if (res.status === 401 || res.status === 403) { setData(defaultData); setError(""); return; }
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Không tải được dữ liệu.");
+      if (current === sequence.current) { setData({ ...defaultData, ...json }); setError(""); }
+    } catch (err) { if (current === sequence.current) setError(err instanceof Error ? err.message : "Lỗi kết nối."); }
+    finally { if (current === sequence.current) setLoading(false); }
   }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  const login = async (email: string, password: string) => {
+  useEffect(() => { localStorage.removeItem("mdc_uid"); void refresh(); }, [refresh]);
+  async function mutation(url: string, method: string, body?: unknown): Promise<Result> {
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        return { success: false, error: json.error || "Đăng nhập thất bại" };
-      }
-      if (typeof window !== "undefined" && json.user?.id) {
-        localStorage.setItem("mdc_uid", json.user.id);
-      }
-      await refresh();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || "Lỗi kết nối máy chủ" };
-    }
-  };
-
-  const loginQuick = async (userId: string) => {
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        return { success: false, error: json.error || "Đăng nhập thất bại" };
-      }
-      if (typeof window !== "undefined" && userId) {
-        localStorage.setItem("mdc_uid", userId);
-      }
-      await refresh();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || "Lỗi kết nối máy chủ" };
-    }
-  };
-
+      await apiRequest(url, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+      await refresh(); return { success: true };
+    } catch (err) { return { success: false, error: err instanceof Error ? err.message : "Lỗi kết nối." }; }
+  }
+  const login = (email: string, password: string) => mutation("/api/auth/login", "POST", { email, password });
   const logout = async () => {
-    setLoading(true);
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("mdc_uid");
-    }
-    await fetch("/api/auth/logout", { method: "POST" });
-    await refresh();
-    setLoading(false);
+    await apiRequest("/api/auth/logout", { method: "POST" });
+    sequence.current++; setData(defaultData); setError("");
   };
-
-  const switchUser = async (userId: string) => {
-    setLoading(true);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("mdc_uid", userId);
-    }
-    await fetch("/api/auth/switch-role", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
-    });
-    await refresh();
-  };
-
-  const createMember = async (memberData: any) => {
-    try {
-      const storedUid = typeof window !== "undefined" ? localStorage.getItem("mdc_uid") : null;
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (storedUid) headers["x-mdc-uid"] = storedUid;
-
-      const res = await fetch("/api/members", {
-        method: "POST",
-        headers,
-        body: JSON.stringify(memberData),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        return { success: false, error: json.error || "Không thể tạo tài khoản" };
-      }
-      await refresh();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || "Lỗi kết nối" };
-    }
-  };
-
-  const updateMember = async (id: string, updates: any) => {
-    try {
-      const storedUid = typeof window !== "undefined" ? localStorage.getItem("mdc_uid") : null;
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (storedUid) headers["x-mdc-uid"] = storedUid;
-
-      const res = await fetch(`/api/members/${id}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify(updates),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        return { success: false, error: json.error || "Không thể cập nhật tài khoản" };
-      }
-      await refresh();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || "Lỗi kết nối" };
-    }
-  };
-
-  const deleteMember = async (id: string) => {
-    try {
-      const storedUid = typeof window !== "undefined" ? localStorage.getItem("mdc_uid") : null;
-      const headers: Record<string, string> = {};
-      if (storedUid) headers["x-mdc-uid"] = storedUid;
-
-      const res = await fetch(`/api/members/${id}`, {
-        method: "DELETE",
-        headers,
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        return { success: false, error: json.error || "Không thể xóa tài khoản" };
-      }
-      await refresh();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || "Lỗi kết nối" };
-    }
-  };
-
-  const simulateExternalLogin = async (email: string, name: string) => {
-    setLoading(true);
-    await fetch("/api/auth/switch-role", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ googleLoginEmail: email, fullName: name }),
-    });
-    await refresh();
-  };
-
   const markNotificationRead = async (id?: string, all?: boolean) => {
-    await fetch("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notificationId: id, markAll: all }),
-    });
-    await refresh();
+    const result = await mutation("/api/notifications", "PATCH", { notificationId: id, markAll: all });
+    if (!result.success) throw new Error(result.error);
   };
-
   const runEmailWorker = async () => {
-    await fetch("/api/cron/process-outbox", { method: "POST" });
-    await refresh();
+    const result = await mutation("/api/cron/process-outbox", "POST");
+    if (!result.success) throw new Error(result.error);
   };
-
-  const resetToSampleData = async () => {
-    setLoading(true);
-    await fetch("/api/system/reset", { method: "POST" });
-    await refresh();
-  };
-
-  return (
-    <StateContext.Provider
-      value={{
-        data,
-        loading,
-        refresh,
-        login,
-        loginQuick,
-        logout,
-        switchUser,
-        createMember,
-        updateMember,
-        deleteMember,
-        simulateExternalLogin,
-        markNotificationRead,
-        runEmailWorker,
-        resetToSampleData,
-      }}
-    >
-      {children}
-    </StateContext.Provider>
-  );
+  return <StateContext.Provider value={{ data, loading, error, refresh, login, logout,
+    createMember: body => mutation("/api/members", "POST", body),
+    updateMember: (id, body) => mutation(`/api/members/${id}`, "PATCH", body),
+    deleteMember: id => mutation(`/api/members/${id}`, "DELETE"), markNotificationRead, runEmailWorker }}>{children}</StateContext.Provider>;
 }
-
-export const useAppState = () => useContext(StateContext);
+export function useAppState() { const context = useContext(StateContext); if (!context) throw new Error("Missing StateProvider"); return context; }

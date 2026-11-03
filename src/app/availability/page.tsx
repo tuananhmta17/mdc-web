@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { getDayNameVN } from "@/lib/utils";
 import {
   CalendarDays,
@@ -25,8 +25,8 @@ interface SlotState {
 const standardSlots = [
   { start: "08:30", end: "11:00", label: "Sáng (08:30 - 11:00)" },
   { start: "14:00", end: "16:30", label: "Chiều (14:00 - 16:30)" },
-  { start: "18:00", end: "20:30", label: "Tối chính (18:00 - 20:30)" },
-  { start: "19:00", end: "21:30", label: "Tối muộn (19:00 - 21:30)" },
+  { start: "18:00", end: "20:00", label: "Tối (18:00 - 20:00)" },
+  { start: "20:00", end: "22:00", label: "Tối muộn (20:00 - 22:00)" },
 ];
 
 export default function AvailabilityPage() {
@@ -34,11 +34,11 @@ export default function AvailabilityPage() {
   const session = data.session;
 
   const myRegisteredDances = data.dances.filter((d) =>
-    data.registrations.some((r) => r.dance_id === d.id && r.user_id === session?.user.id)
+    d.leader_id === session?.user.id || session?.isBoardAdmin || session?.isDanceHead || data.registrations.some((r) => r.dance_id === d.id && r.user_id === session?.user.id && ["REGISTERED", "APPROVED"].includes(r.status))
   );
 
   const [selectedDanceId, setSelectedDanceId] = useState<string>(
-    myRegisteredDances[0]?.id || data.dances[0]?.id || ""
+    myRegisteredDances[0]?.id || ""
   );
 
   const [slotsState, setSlotsState] = useState<SlotState[]>([]);
@@ -114,7 +114,7 @@ export default function AvailabilityPage() {
         level: s.level,
       }));
 
-      const res = await fetch(`/api/dances/${selectedDanceId}/availability`, {
+      const res = await apiRequest(`/api/dances/${selectedDanceId}/availability`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slots: payloadSlots }),
@@ -124,7 +124,7 @@ export default function AvailabilityPage() {
 
       setFeedbackMsg("Đã lưu lịch rảnh thành công!");
       // Reload recommendations
-      const recRes = await fetch(`/api/dances/${selectedDanceId}/availability`);
+      const recRes = await apiRequest(`/api/dances/${selectedDanceId}/availability`);
       if (recRes.ok) {
         const json = await recRes.json();
         setRecommendations(json.recommendations || []);
@@ -158,7 +158,7 @@ export default function AvailabilityPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || !selectedDanceId || !slotsState.length}
             className="px-5 py-2.5 rounded-xl bg-mdc-red hover:bg-mdc-redDark text-xs font-bold text-white transition-all shadow-glowRed active:scale-[0.98] flex items-center gap-2"
           >
             <Save className="w-4 h-4" />
@@ -186,7 +186,8 @@ export default function AvailabilityPage() {
           onChange={(e) => setSelectedDanceId(e.target.value)}
           className="bg-mdc-card border border-mdc-border rounded-xl px-4 py-2 text-xs text-white font-semibold focus:outline-none focus:border-mdc-red"
         >
-          {data.dances.map((d) => (
+          {!myRegisteredDances.length && <option value="">Chưa tham gia bài nhảy nào</option>}
+          {myRegisteredDances.map((d) => (
             <option key={d.id} value={d.id}>
               {d.title} ({d.song_title})
             </option>

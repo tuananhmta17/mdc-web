@@ -1,10 +1,12 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { createNotificationAndOutbox } from "@/lib/notifications";
 import { formatVNDateTime } from "@/lib/utils";
 
-export async function PATCH(
+async function handlerPATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -51,12 +53,12 @@ export async function PATCH(
         entityType: "practice_sessions",
         entityId: id,
         linkUrl: "/practice",
-        idempotencyKey: `practice-changed-${id}-${user.id}-${Date.now()}`,
+        idempotencyKey: `practice-changed-${id}-${user.id}-${randomUUID()}`,
       });
     }
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "UPDATE_PRACTICE_SESSION",
       entity_type: "practice_sessions",
@@ -72,3 +74,5 @@ export async function PATCH(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const PATCH = withApi(handlerPATCH);

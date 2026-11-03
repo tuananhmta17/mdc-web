@@ -1,9 +1,11 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
 import { RSVPResponse } from "@/lib/types";
 
-export async function POST(
+async function handlerPOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -19,6 +21,10 @@ export async function POST(
   if (!practice) {
     return NextResponse.json({ error: "Practice session not found" }, { status: 404 });
   }
+  const dance = db.dances.find(d => d.id === practice.dance_id);
+  const participating = db.dance_registrations.some(r => r.dance_id === practice.dance_id && r.user_id === session.user.id && ["REGISTERED", "APPROVED"].includes(r.status));
+  if (!participating && (!dance || !RBAC.canManagePractice(session, dance))) return NextResponse.json({ error: "Bạn không thuộc đội hình buổi tập này." }, { status: 403 });
+  if (["CANCELLED", "COMPLETED"].includes(practice.status)) return NextResponse.json({ error: "Buổi tập đã hủy hoặc hoàn tất." }, { status: 400 });
 
   try {
     const body = await req.json();
@@ -38,7 +44,7 @@ export async function POST(
       existing.responded_at = new Date().toISOString();
     } else {
       db.practice_rsvps.push({
-        id: `rsvp-${Date.now()}-${session.user.id}`,
+        id: `rsvp-${randomUUID()}-${session.user.id}`,
         session_id: id,
         user_id: session.user.id,
         response,
@@ -53,3 +59,5 @@ export async function POST(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withApi(handlerPOST);

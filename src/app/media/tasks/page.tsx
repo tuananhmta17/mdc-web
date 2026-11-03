@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { formatVNDateTime } from "@/lib/utils";
 import {
   KanbanSquare,
@@ -50,7 +50,7 @@ export default function MediaTasksPage() {
     setActionError("");
 
     try {
-      const res = await fetch("/api/media/tasks", {
+      const res = await apiRequest("/api/media/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -60,7 +60,7 @@ export default function MediaTasksPage() {
           priority,
           assignee_id: assigneeId,
           dance_id: danceId || undefined,
-          due_at: new Date(dueAt).toISOString(),
+          due_at: new Date(`${dueAt}:00+07:00`).toISOString(),
           reference_links: referenceLinks,
         }),
       });

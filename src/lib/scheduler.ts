@@ -33,11 +33,16 @@ export function calculateBestPracticeSlots(
   }
 
   const slots = db.availability_slots.filter((s) => s.dance_id === danceId);
+  const slotsByUserDay = new Map<string, AvailabilitySlot[]>();
+  for (const s of slots) {
+    const key = `${s.user_id}:${s.day_of_week}`;
+    slotsByUserDay.set(key, [...(slotsByUserDay.get(key) || []), s]);
+  }
 
   // Standard prospective rehearsal windows
   const windows = [
-    { start: "18:00", end: "20:30" }, // Evening primary
-    { start: "19:00", end: "21:30" }, // Evening late
+    { start: "18:00", end: "20:00" },
+    { start: "20:00", end: "22:00" },
     { start: "14:00", end: "16:30" }, // Afternoon weekend
     { start: "08:30", end: "11:00" }, // Morning weekend
   ];
@@ -56,7 +61,7 @@ export function calculateBestPracticeSlots(
 
       for (const uid of registeredUserIds) {
         // Find user's declared slot matching this day and time
-        const slot = slots.find(
+        const slot = (slotsByUserDay.get(`${uid}:${day}`) || []).find(
           (s) =>
             s.user_id === uid &&
             s.day_of_week === day &&
@@ -79,9 +84,14 @@ export function calculateBestPracticeSlots(
       // Check conflict with other scheduled practice sessions of ANY dance
       // (For MVP heuristic: check day of week matches)
       const hasConflict = db.practice_sessions.some((ps) => {
-        if (ps.status === "CANCELLED") return false;
-        const d = new Date(ps.start_at);
-        return d.getUTCDay() === day; // conflict warning
+        if (!["SCHEDULED", "RESCHEDULED"].includes(ps.status) || ps.dance_id === danceId || Date.parse(ps.end_at) < Date.now()) return false;
+        const sharedParticipants = db.dance_registrations.some(r => r.dance_id === ps.dance_id && registeredUserIds.includes(r.user_id) && ["REGISTERED", "APPROVED"].includes(r.status));
+        const otherDance = db.dances.find(d => d.id === ps.dance_id);
+        if (!sharedParticipants && !registeredUserIds.includes(otherDance?.leader_id || "")) return false;
+        const local = new Date(Date.parse(ps.start_at) + 7 * 3600000);
+        const end = new Date(Date.parse(ps.end_at) + 7 * 3600000);
+        const clock = (d: Date) => `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+        return local.getUTCDay() === day && clock(local) < win.end && clock(end) > win.start;
       });
 
       const isLeaderAvailable = dance.leader_id

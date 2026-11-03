@@ -1,3 +1,5 @@
+import { withApi } from "@/lib/db";
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentSession, readDb, writeDb } from "@/lib/db";
 import { RBAC } from "@/lib/rbac";
@@ -5,7 +7,7 @@ import { MediaTaskSubmission } from "@/lib/types";
 import { createNotificationAndOutbox } from "@/lib/notifications";
 import { isValidHttpUrl } from "@/lib/utils";
 
-export async function POST(
+async function handlerPOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -44,7 +46,7 @@ export async function POST(
       ? Math.max(...existingSubs.map((s) => s.version)) + 1
       : 1;
 
-    const submissionId = `sub-${Date.now()}`;
+    const submissionId = `sub-${randomUUID()}`;
     const newSubmission: MediaTaskSubmission = {
       id: submissionId,
       task_id: id,
@@ -80,7 +82,7 @@ export async function POST(
     }
 
     db.audit_logs.unshift({
-      id: `audit-${Date.now()}`,
+      id: `audit-${randomUUID()}`,
       actor_id: session.user.id,
       action: "SUBMIT_MEDIA_TASK",
       entity_type: "media_task_submissions",
@@ -95,3 +97,5 @@ export async function POST(
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+export const POST = withApi(handlerPOST);

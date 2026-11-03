@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAppState } from "@/lib/state-context";
+import { apiRequest, useAppState } from "@/lib/state-context";
 import { formatVNDateTime } from "@/lib/utils";
 import {
   ShieldCheck,
@@ -50,7 +50,7 @@ export default function BoardExecutivePage() {
     e.preventDefault();
     setIsPosting(true);
     try {
-      const res = await fetch("/api/board/announcements", {
+      const res = await apiRequest("/api/board/announcements", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
