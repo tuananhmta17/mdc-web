@@ -34,6 +34,10 @@ Sau khi người dùng duyệt quyền team Vercel, đã đọc được tên c�
 
 Sau migration, `/api/state` trên production đã đổi từ lỗi đọc Supabase sang HTTP 503: `Chưa khởi tạo quản trị viên. Cần cấu hình MDC_ADMIN_EMAIL và MDC_ADMIN_PASSWORD (ít nhất 12 ký tự).` Không có phiên hoặc mật khẩu bị trả về trong phản hồi kiểm tra này.
 
-Việc còn lại: người dùng xác định email/họ tên quản trị; đặt mật khẩu riêng trực tiếp trong cấu hình bảo mật; cấu hình URL, cron và nhà cung cấp email thật; redeploy đúng dự án; đăng nhập lần đầu và xác minh snapshot được lưu; thu hồi biến mật khẩu khởi tạo sau khi tạo tài khoản; kiểm tra luồng đăng nhập/đăng xuất và email thật. Không đưa dữ liệu mẫu vào cloud.
+Người dùng đã cung cấp thông tin quản trị và xác nhận đăng nhập được vào dashboard trên tên miền thật. Không lưu địa chỉ email cá nhân hay mật khẩu vào repository công khai.
+
+Kiểm tra độc lập sau xác nhận đăng nhập (03/11/2026): 11/11 API nội bộ được kiểm tra trả HTTP 401 cho request không có phiên, không trả session/profile và có `Cache-Control: private, no-store`. Các nhóm kiểm tra gồm state, auth/me, thành viên, bài nhảy/chi tiết/lịch rảnh, bình chọn, lịch tập, nhiệm vụ Media/chi tiết và xuất thành viên. Lỗi 503 khởi tạo không còn xuất hiện trong các request này.
+
+Việc còn lại: xác minh trực tiếp phiên đăng nhập, dữ liệu sau tải lại/đăng xuất và snapshot đã lưu; xác minh cấu hình URL, cron, nhà cung cấp email và gửi email thật; thu hồi biến mật khẩu khởi tạo sau khi tạo tài khoản. Không đưa dữ liệu mẫu vào cloud. Việc người dùng đã đăng nhập không tự xác nhận các bước kiểm tra dịch vụ khác đã hoàn tất.
 
 Ở lần tiếp tục gần nhất, các công cụ Supabase/Vercel không còn trong phiên và kết quả tìm plugin báo chưa cài; trình duyệt báo `Local browser use is disabled in Work settings`. Token CLI cũ đã hết hiệu lực và máy chưa có file xác thực CLI mới. Cần khôi phục một đường truy cập quản trị đã được cấp quyền để hoàn thành các bước còn lại. Không cần duyệt lại phạm vi triển khai đã được người dùng cho phép.
